@@ -57,7 +57,7 @@ const globalErrorHandler: ErrorRequestHandler = (
     errors: errorSources,
     requestId: req.requestId!,
     timestamp: new Date().toISOString(),
-    ...(config.node_env === "development" && { stack: err?.stack }),
+    ...(config.env === "development" && { stack: err?.stack }),
   };
 
   //* Log error with appropriate level
@@ -94,7 +94,7 @@ const globalErrorHandler: ErrorRequestHandler = (
     });
 
     // In production, don't expose internal error details
-    if (config.node_env === "production") {
+    if (config.env === "production") {
       errorResponse.message = "Internal server error";
       errorResponse.errors = [
         {

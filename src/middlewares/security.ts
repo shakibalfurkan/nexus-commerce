@@ -16,7 +16,7 @@ export const setupSecurityMiddleware = (app: Application): void => {
       hidePoweredBy: true,
 
       hsts:
-        config.node_env === "production"
+        config.env === "production"
           ? {
               maxAge: 31536000,
               includeSubDomains: true,
@@ -31,7 +31,7 @@ export const setupSecurityMiddleware = (app: Application): void => {
   app.use((_req, res, next) => {
     res.setHeader("X-Gateway", "ClassyShop-API-Gateway");
 
-    if (config.node_env === "production") {
+    if (config.env === "production") {
       res.setHeader(
         "Permissions-Policy",
         "geolocation=(), microphone=(), camera=()",
@@ -78,6 +78,6 @@ export const setupSecurityMiddleware = (app: Application): void => {
 
   logger.info({
     message: "Security middleware configured successfully",
-    environment: config.node_env,
+    environment: config.env,
   });
 };

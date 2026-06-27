@@ -1,5 +1,6 @@
 import createApp from "./app.js";
 import config from "./config/index.js";
+import { redisClient } from "./config/redis.js";
 import logger from "./utils/logger.js";
 
 async function main() {
@@ -7,6 +8,9 @@ async function main() {
 
   try {
     const app = createApp();
+
+    await redisClient.ping();
+    logger.info("Redis Database handshake verified successfully.");
 
     app.listen(port, () => {
       logger.info(

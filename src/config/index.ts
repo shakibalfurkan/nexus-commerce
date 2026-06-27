@@ -4,17 +4,19 @@ import path from "path";
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
 export default {
-  node_env: process.env.NODE_ENV,
-  isDevelopment: process.env.NODE_ENV === "development",
+  env: process.env.ENV,
   serviceName: process.env.SERVICE_NAME,
   port: process.env.PORT,
 
-  circuit_breaker_threshold: Number(process.env.CIRCUIT_BREAKER_THRESHOLD) || 5,
-  circuit_breaker_timeout: Number(process.env.CIRCUIT_BREAKER_TIMEOUT) || 60000,
-  circuit_breaker_reset_timeout:
-    Number(process.env.CIRCUIT_BREAKER_RESET_TIMEOUT) || 30000,
+  redis_database_url: process.env.REDIS_DATABASE_URL,
 
-  proxy_timeout: Number(process.env.PROXY_TIMEOUT) || 30000,
+  circuit_breaker_threshold: Number(process.env.CIRCUIT_BREAKER_THRESHOLD),
+  circuit_breaker_timeout: Number(process.env.CIRCUIT_BREAKER_TIMEOUT),
+  circuit_breaker_reset_timeout: Number(
+    process.env.CIRCUIT_BREAKER_RESET_TIMEOUT,
+  ),
+
+  proxy_timeout: Number(process.env.PROXY_TIMEOUT),
 
   auth_service_url: process.env.AUTH_SERVICE_URL,
   user_service_url: process.env.USER_SERVICE_URL,

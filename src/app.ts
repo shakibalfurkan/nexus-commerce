@@ -29,7 +29,7 @@ function createApp(): Application {
 
   app.use(requestIdMiddleware);
 
-  if (config.node_env === "production") {
+  if (config.env === "production") {
     app.use(morgan("combined", { stream: morganStream }));
   } else {
     app.use(morgan("dev"));
@@ -46,7 +46,7 @@ function createApp(): Application {
   app.get("/", (_req: Request, res: Response) => {
     res.status(200).json({
       success: true,
-      message: `Welcome to the ClassyShop ${config.serviceName} API!`,
+      message: `Welcome to ClassyShop ${config.serviceName} API!`,
     });
   });
 

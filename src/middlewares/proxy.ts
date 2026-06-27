@@ -6,16 +6,23 @@ import { logger } from "../utils/logger.js";
 import { ServiceUnavailableError } from "../errors/AppError.js";
 
 const sharedOptions = {
-  timeout: config.proxy_timeout ?? 30_000,
+  timeout: config.proxy_timeout,
 
   proxyReqOptDecorator: (proxyReqOpts: any, req: Request) => {
     proxyReqOpts.headers ??= {};
 
-    proxyReqOpts.headers["X-Request-ID"] = req.headers["x-request-id"];
-    proxyReqOpts.headers["X-Forwarded-For"] = req.ip;
-    proxyReqOpts.headers["X-Real-IP"] = req.ip;
-    proxyReqOpts.headers["X-Client-Type"] = req.headers["x-client-type"];
-    proxyReqOpts.headers["User-Agent"] = req.headers["user-agent"];
+    const headersToForward: Record<string, string | undefined> = {
+      "X-Request-ID": (req.headers["x-request-id"] || req.requestId) as string,
+      "X-Forwarded-For": req.ip,
+    };
+
+    for (const [key, value] of Object.entries(headersToForward)) {
+      if (value !== undefined && value !== null) {
+        proxyReqOpts.headers[key] = String(value);
+      } else {
+        delete proxyReqOpts.headers[key];
+      }
+    }
 
     return proxyReqOpts;
   },
