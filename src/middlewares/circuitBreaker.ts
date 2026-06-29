@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import config from "../config/index.js";
 import { logger } from "../utils/logger.js";
+import { ServiceUnavailableError } from "../errors/AppError.js";
 
 interface CircuitBreakerState {
   failures: number;
@@ -108,7 +109,11 @@ export const circuitBreakerMiddleware = (
       path: req.path,
     });
 
-    // throw new ServiceUnavailable error with a JSON response
+    next(
+      new ServiceUnavailableError(
+        "Service temporarily unavailable due to high failure rate.",
+      ),
+    );
     return;
   }
 

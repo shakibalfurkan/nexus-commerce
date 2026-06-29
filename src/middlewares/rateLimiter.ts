@@ -4,6 +4,7 @@ import type { Request, Response, NextFunction } from "express";
 import { logger } from "../utils/logger.js";
 import { TooManyRequestsError } from "../errors/AppError.js";
 import { redisClient } from "../config/redis.js";
+import config from "../config/index.js";
 
 const onLimitReached = (
   req: Request,
@@ -25,8 +26,8 @@ const onLimitReached = (
 };
 
 export const globalLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 200,
+  windowMs: config.rate_limit_window_ms,
+  max: config.rate_limit_max,
   standardHeaders: true,
   legacyHeaders: false,
   handler: onLimitReached,
