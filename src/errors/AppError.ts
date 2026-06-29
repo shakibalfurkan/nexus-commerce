@@ -59,3 +59,10 @@ export class ServiceUnavailableError extends AppError {
     this.name = "ServiceUnavailableError";
   }
 }
+
+export class GatewayTimeoutError extends AppError {
+  constructor(message = "Gateway timeout", field?: string) {
+    super(504, message, true, field);
+    this.name = "GatewayTimeoutError";
+  }
+}
