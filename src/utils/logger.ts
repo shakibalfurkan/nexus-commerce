@@ -27,7 +27,7 @@ const transports: winston.transport[] = [];
 // Always log to console
 transports.push(
   new winston.transports.Console({
-    format: config.env === "development" ? consoleFormat : fileFormat,
+    format: config.node_env === "development" ? consoleFormat : fileFormat,
   }),
 );
 
@@ -75,10 +75,10 @@ if (!isServerless) {
 }
 
 export const logger = winston.createLogger({
-  level: config.env === "development" ? "debug" : "info",
+  level: config.node_env === "development" ? "debug" : "info",
   defaultMeta: {
     service: config.serviceName,
-    env: config.env,
+    env: config.node_env,
   },
   transports,
   exitOnError: false,

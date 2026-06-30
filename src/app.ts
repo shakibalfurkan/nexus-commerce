@@ -42,7 +42,7 @@ function createApp(): Application {
   app.use(requestIdMiddleware);
 
   // ─── Logging
-  if (config.env === "production") {
+  if (config.node_env === "production") {
     app.use(morgan("combined", { stream: morganStream }));
   } else {
     app.use(morgan("dev"));

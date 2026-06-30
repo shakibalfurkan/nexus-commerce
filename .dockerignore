@@ -1,0 +1,10 @@
+logs
+node_modules
+dist
+.vscode
+.vercel
+.env
+.git
+.gitignore
+*.md
+.pnpm-store
