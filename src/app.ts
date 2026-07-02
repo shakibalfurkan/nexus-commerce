@@ -55,6 +55,7 @@ function createApp(): Application {
   app.use(globalLimiter);
 
   // ─── Request Timeout (29s — before proxy timeout of 30s)
+  // Staggered 1s before proxy ceiling to prevent infrastructure race conditions
   app.use(requestTimeout({ timeout: config.proxy_timeout - 1000 }));
 
   // ─── Circuit Breaker

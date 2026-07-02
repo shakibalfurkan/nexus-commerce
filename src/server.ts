@@ -40,6 +40,9 @@ const shutdown = async (signal: string) => {
 
   // Stop accepting new connections
   if (server) {
+    if (signal === "uncaughtException") {
+      server.closeAllConnections();
+    }
     server.close(async () => {
       logger.info("HTTP server closed.");
 
