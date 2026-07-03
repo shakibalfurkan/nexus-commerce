@@ -17,6 +17,7 @@ import formatUptime from "./utils/formatUptime.js";
 import { morganStream } from "./utils/logger.js";
 import globalRouter from "./routes/index.js";
 import { requestIdMiddleware } from "./middlewares/requestId.js";
+import { sanitizationMiddleware } from "./middlewares/sanitize.js";
 
 export function createApp(): Application {
   const app: Application = express();
@@ -58,6 +59,7 @@ export function createApp(): Application {
     }),
   );
   app.use(express.json({ limit: "10mb" }));
+  app.use(sanitizationMiddleware);
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
   app.use(cookieParser());
 
