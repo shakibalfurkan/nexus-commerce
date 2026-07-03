@@ -16,12 +16,15 @@ import formatUptime from "./utils/formatUptime.js";
 
 import { morganStream } from "./utils/logger.js";
 import globalRouter from "./routes/index.js";
+import { requestIdMiddleware } from "./middlewares/requestId.js";
 
 export function createApp(): Application {
   const app: Application = express();
 
   // Middleware setup
   app.use(helmet());
+
+  app.use(requestIdMiddleware);
   app.use(
     cors({
       origin: config.allowed_origins,
