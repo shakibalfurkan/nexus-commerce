@@ -148,7 +148,6 @@ model AdminProfile {
 enum UserRoles {
   SUPER_ADMIN
   ADMIN
-  MODERATOR
   SELLER
   CUSTOMER
 }

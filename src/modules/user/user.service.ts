@@ -62,11 +62,7 @@ const createUserProfile = async (payload: IUserProfileData) => {
           },
         },
       });
-    } else if (
-      [UserRoles.ADMIN, UserRoles.SUPER_ADMIN, UserRoles.MODERATOR].includes(
-        role,
-      )
-    ) {
+    } else if ([UserRoles.ADMIN, UserRoles.SUPER_ADMIN].includes(role)) {
       await tx.adminProfile.create({
         data: { userId: user.id, firstName, lastName },
       });

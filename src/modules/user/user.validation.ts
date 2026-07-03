@@ -39,7 +39,6 @@ const createUserProfileValidation = z.object({
       [
         UserRoles.SUPER_ADMIN,
         UserRoles.ADMIN,
-        UserRoles.MODERATOR,
         UserRoles.SELLER,
         UserRoles.CUSTOMER,
       ],
