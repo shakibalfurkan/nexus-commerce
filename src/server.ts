@@ -2,15 +2,18 @@ import { createServer, type Server } from "http";
 import { createApp } from "./app.js";
 import config from "./config/index.js";
 import logger from "./utils/logger.js";
+import { disconnectPrisma, prisma } from "./lib/prisma.js";
 
 let server: Server;
-
-const port = process.env.PORT || config.port;
 
 async function main(): Promise<void> {
   try {
     // Create app
     const app = createApp();
+
+    // Verify Prisma connection
+    await prisma.$connect();
+    logger.info("Prisma connected to database.");
 
     server = createServer(app);
 
@@ -37,6 +40,8 @@ const shutdown = async (signal: string) => {
 
     server.close(async () => {
       logger.info("HTTP server closed.");
+
+      await Promise.allSettled([disconnectPrisma()]);
 
       logger.info("Graceful shutdown complete. Exiting.");
       process.exit(0);
