@@ -3,6 +3,7 @@ import { createApp } from "./app.js";
 import config from "./config/index.js";
 import logger from "./utils/logger.js";
 import { disconnectPrisma, prisma } from "./lib/prisma.js";
+import { redisClient } from "./config/redis.js";
 
 let server: Server;
 
@@ -14,6 +15,10 @@ async function main(): Promise<void> {
     // Verify Prisma connection
     await prisma.$connect();
     logger.info("Prisma connected to database.");
+
+    // Verify Redis connection
+    await redisClient.ping();
+    logger.info("Redis Database handshake verified successfully.");
 
     server = createServer(app);
 
@@ -41,7 +46,7 @@ const shutdown = async (signal: string) => {
     server.close(async () => {
       logger.info("HTTP server closed.");
 
-      await Promise.allSettled([disconnectPrisma()]);
+      await Promise.allSettled([redisClient.quit(), disconnectPrisma()]);
 
       logger.info("Graceful shutdown complete. Exiting.");
       process.exit(0);

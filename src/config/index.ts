@@ -8,6 +8,8 @@ export default {
   serviceName: process.env.SERVICE_NAME || "user-service",
   port: process.env.PORT,
 
+  redis_database_url: process.env.REDIS_DATABASE_URL!,
+
   kafka: {
     broker: process.env.KAFKA_BROKER,
     username: process.env.KAFKA_USERNAME,
