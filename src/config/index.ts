@@ -3,11 +3,6 @@ import path from "path";
 
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
-// ─── Staff-Level Config Validation ───
-// All environment variables are validated at startup.
-// If a required variable is missing, the process fails immediately with
-// a clear error message — not 3 hours later under load.
-
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -28,17 +23,14 @@ export default {
   serviceName: optionalEnv("SERVICE_NAME", "user-service"),
   port: optionalEnv("PORT", "5001"),
 
-  // ─── Database ───
-  database_url: requireEnv("DATABASE_URL"),
-
   // ─── Redis ───
   redis_database_url: requireEnv("REDIS_DATABASE_URL"),
 
   // ─── Kafka ───
   kafka: {
     broker: requireEnv("KAFKA_BROKER"),
-    username: optionalEnv("KAFKA_USERNAME", ""),
-    password: optionalEnv("KAFKA_PASSWORD", ""),
+    username: requireEnv("KAFKA_USERNAME"),
+    password: requireEnv("KAFKA_PASSWORD"),
   },
 
   // ─── JWT ───
@@ -51,8 +43,6 @@ export default {
   internal_service_secret: requireEnv("INTERNAL_SERVICE_SECRET"),
 
   // ─── PII Encryption (Sprint 2) ───
-  // ENCRYPTION_MASTER_KEY: 64-char hex string (32 bytes) for AES-256-GCM
-  // Generate with: openssl rand -hex 32
   encryption: {
     master_key: requireEnv("ENCRYPTION_MASTER_KEY"),
     blind_index_secret: requireEnv("BLIND_INDEX_SECRET"),
