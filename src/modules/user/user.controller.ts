@@ -1,11 +1,61 @@
+// ─── Staff-Level Controller Layer ───
+// Responsible ONLY for HTTP concerns: parsing request payloads, extracting
+// headers, and sending responses. Zero business logic. Zero database awareness.
+//
+// Key patterns:
+// 1. Every handler extracts typed DTOs from the validated request
+// 2. Cross-cutting concerns (actorId, ipAddress, userAgent) are extracted
+//    from the request and passed to the service
+// 3. Responses are always sent through the DTO mapper (never raw Prisma objects)
+// 4. Error handling is delegated to the global error handler middleware
+
 import type { Request, Response } from "express";
 import catchAsync from "../../utils/catchAsync.js";
-import { UserService } from "./user.service.js";
 import sendResponse from "../../utils/sendResponse.js";
+import { UserService } from "./user.service.js";
+import type { CreateUserProfileDTO } from "./user.dto.js";
 
+/**
+ * POST /api/v1/users/create-profile
+ *
+ * Creates a new user with a role-specific profile.
+ * This endpoint is called internally by the auth-service after
+ * successful registration/authentication.
+ *
+ * Request body is validated by `UserValidation.createUserProfileValidation`
+ * middleware before reaching this handler.
+ */
 const createUserProfile = catchAsync(async (req: Request, res: Response) => {
-  const profileData = req.body;
-  const result = await UserService.createUserProfile(profileData);
+  // Extract the validated payload from the request body
+  // The validation middleware guarantees this matches CreateUserProfileDTO
+  const payload: CreateUserProfileDTO = {
+    id: req.body.id,
+    firstName: req.body.profile.firstName,
+    lastName: req.body.profile.lastName,
+    email: req.body.email,
+    role: req.body.role,
+    phone: req.body.profile.phone,
+    avatar: req.body.profile.avatar,
+    dateOfBirth: req.body.profile.dateOfBirth,
+    shopData: req.body.profile.shopData,
+  };
+
+  // Extract cross-cutting context from the request
+  const actorId: string = req.user?.id ?? req.body.id;
+  const xForwardedFor = req.headers["x-forwarded-for"];
+  const ipAddress: string | undefined = Array.isArray(xForwardedFor)
+    ? xForwardedFor[0]
+    : (xForwardedFor ?? req.socket.remoteAddress ?? undefined);
+  const userAgent: string | undefined = req.headers["user-agent"] as
+    | string
+    | undefined;
+
+  const result = await UserService.createUserProfile(
+    payload,
+    actorId,
+    ipAddress,
+    userAgent,
+  );
 
   sendResponse(res, {
     statusCode: 201,
@@ -15,6 +65,125 @@ const createUserProfile = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+/**
+ * GET /api/v1/users/:id
+ *
+ * Retrieves a user by their ID.
+ */
+const getUserById = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const result = await UserService.getUserById(id as string);
+
+  if (!result) {
+    sendResponse(res, {
+      statusCode: 404,
+      success: false,
+      message: "User not found",
+      data: null,
+    });
+    return;
+  }
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "User retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * GET /api/v1/users/email/:email
+ *
+ * Retrieves a user by their email address.
+ */
+const getUserByEmail = catchAsync(async (req: Request, res: Response) => {
+  const { email } = req.params;
+
+  const result = await UserService.getUserByEmail(email as string);
+
+  if (!result) {
+    sendResponse(res, {
+      statusCode: 404,
+      success: false,
+      message: "User not found",
+      data: null,
+    });
+    return;
+  }
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "User retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * DELETE /api/v1/users/:id
+ *
+ * Soft-deletes a user.
+ */
+const deleteUser = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const actorId: string = req.user?.id ?? "system";
+
+  await UserService.deleteUser(id as string, actorId);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "User deleted successfully",
+    data: null,
+  });
+});
+
+/**
+ * DELETE /api/v1/users/:id/hard
+ *
+ * Permanently deletes a user (GDPR Right to Erasure).
+ * Requires cryptographic shredding to have been performed first (Sprint 2).
+ */
+const hardDeleteUser = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const actorId: string = req.user?.id ?? "system";
+
+  await UserService.hardDeleteUser(id as string, actorId);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "User permanently deleted",
+    data: null,
+  });
+});
+
+/**
+ * POST /api/v1/users/:id/restore
+ *
+ * Restores a soft-deleted user.
+ */
+const restoreUser = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const actorId: string = req.user?.id ?? "system";
+
+  const result = await UserService.restoreUser(id as string, actorId);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "User restored successfully",
+    data: result,
+  });
+});
+
 export const UserController = {
   createUserProfile,
+  getUserById,
+  getUserByEmail,
+  deleteUser,
+  hardDeleteUser,
+  restoreUser,
 };

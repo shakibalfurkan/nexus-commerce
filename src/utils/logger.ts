@@ -32,7 +32,7 @@ transports.push(
 );
 
 const isServerless =
-  process.env.VERCEL === "1" || process.env.AWS_LAMBDA_FUNCTION_NAME;
+  process.env["VERCEL"] === "1" || process.env["AWS_LAMBDA_FUNCTION_NAME"];
 
 if (!isServerless) {
   transports.push(
