@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { InternalServerError } from "../errors/AppError.js";
+import config from "../config/index.js";
 
 // ─── Constants ───
 const ALGORITHM = "sha256" as const;
@@ -7,7 +8,7 @@ const OUTPUT_ENCODING = "hex" as const;
 
 // ─── Domain Secret Management ───
 function getDomainSecret(): string {
-  const secret = process.env.BLIND_INDEX_SECRET;
+  const secret = config.encryption.blind_index_secret;
   if (!secret) {
     throw new InternalServerError(
       "BLIND_INDEX_SECRET environment variable is required for PII blind indexing",
