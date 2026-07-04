@@ -67,6 +67,13 @@ export class ValidationError extends AppError {
   }
 }
 
+export class CircuitBreakerError extends AppError {
+  constructor(message: string) {
+    super(500, message, false);
+    this.name = "CircuitBreakerError";
+  }
+}
+
 export class InternalServerError extends AppError {
   constructor(message = "Internal server error", field?: string) {
     super(500, message, false, field);
