@@ -1,0 +1,17 @@
+import type { PrismaClient } from "../generated/prisma/client.js";
+
+export type PrismaTransaction = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
+>;
+
+export interface CursorPaginationParams {
+  cursor?: string;
+  limit: number;
+}
+
+export interface CursorPaginationResult<T> {
+  data: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
