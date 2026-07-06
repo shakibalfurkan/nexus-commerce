@@ -8,6 +8,8 @@ import {
   destroyUserEncryptionKey,
   hasActiveEncryptionKey,
 } from "../../crypto/keyManager.js";
+import { emitDomainEvent } from "../../events/outboxWriter.js";
+import { DomainEventTypes } from "../../events/eventTypes.js";
 
 // ─── Domain Constants ───
 
@@ -97,6 +99,24 @@ export async function createUserProfile(
       },
       ipAddress,
       userAgent,
+    });
+
+    await emitDomainEvent(tx, {
+      eventName: DomainEventTypes.USER_REGISTERED,
+      aggregateId: user.id,
+      payload: {
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        firstName: user.profile?.firstName ?? "",
+        lastName: user.profile?.lastName ?? "",
+        createdAt: user.createdAt,
+      },
+      metadata: {
+        emittedAt: new Date().toISOString(),
+        source: "user-service",
+        version: 1,
+      },
     });
 
     return user;

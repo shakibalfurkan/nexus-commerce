@@ -213,14 +213,6 @@ function mapAdminProfile(profile: AdminProfile): AdminProfileDTO {
   };
 }
 
-/**
- * Maps a raw Prisma User (with nested profiles) to a clean UserResponseDTO.
- * This is the ONLY projection function that should be used to return user data.
- *
- * @param user - The Prisma User object with profile includes
- * @returns A sanitized DTO safe for external consumption
- * @throws {Error} If the user has an unrecognized role
- */
 export function toUserResponseDTO(user: UserWithProfiles): UserResponseDTO {
   let profile: CustomerProfileDTO | SellerProfileDTO | AdminProfileDTO | null =
     null;
@@ -245,10 +237,6 @@ export function toUserResponseDTO(user: UserWithProfiles): UserResponseDTO {
   };
 }
 
-/**
- * Type guard to check if a user has a specific role.
- * Use this instead of raw enum comparisons to ensure type safety.
- */
 export function isRole<T extends UserRoles>(
   user: { role: UserRoles },
   role: T,

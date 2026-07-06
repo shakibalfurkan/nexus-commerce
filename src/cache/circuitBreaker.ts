@@ -135,8 +135,6 @@ export class CircuitBreaker {
           this.log(`Circuit recovered and transitioned to CLOSED`);
         }
       } else {
-        // In CLOSED state, reset failure count on success
-
         this.state.failureCount = 0;
       }
 
