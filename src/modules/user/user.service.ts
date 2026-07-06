@@ -1,16 +1,3 @@
-// ─── Staff-Level Service Layer ───
-// Pure domain logic. Zero Prisma imports. Zero database awareness.
-// Orchestrates repository calls, enforces business rules, and handles
-// cryptographic PII protection.
-//
-// Key patterns:
-// 1. Every method is a self-contained business transaction
-// 2. Repository methods are composed atomically via Prisma transactions
-// 3. Business rules are enforced BEFORE data access (fail-fast)
-// 4. Audit logging is a cross-cutting concern applied at the service level
-// 5. PII encryption is automatically applied on user creation
-// 6. Cryptographic shredding precedes hard deletion (GDPR Right to Erasure)
-
 import { prisma } from "../../lib/prisma.js";
 import { BadRequestError, ConflictError } from "../../errors/AppError.js";
 import { UserRoles } from "../../generated/prisma/enums.js";
@@ -37,7 +24,6 @@ export async function createUserProfile(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<UserResponseDTO> {
-  // ─── Business Rule 1: Email uniqueness ───
   const emailExists = await UserRepository.existsByEmailIncludingDeleted(
     payload.email,
   );
@@ -48,7 +34,6 @@ export async function createUserProfile(
     );
   }
 
-  // ─── Business Rule 2: Seller data validation ───
   if (payload.role === UserRoles.SELLER && !payload.shopData) {
     throw new BadRequestError(
       "Shop data is required for seller registration",
@@ -56,16 +41,13 @@ export async function createUserProfile(
     );
   }
 
-  // ─── Atomic Transaction: User + Profile + Encryption + Audit ───
   const result = await prisma.$transaction(async (tx) => {
-    // Step 1: Initialize PII encryption (creates encryption key + encrypts email)
     const { encryptedEmail, emailBlindIndex } = await initializeUserEncryption(
       payload.id,
       payload.email,
       tx,
     );
 
-    // Step 2: Create the user record (with encrypted email and blind index)
     const user = await UserRepository.createUserWithEncryption(
       {
         ...payload,
@@ -75,7 +57,6 @@ export async function createUserProfile(
       tx,
     );
 
-    // Step 3: Create the role-specific profile
     if (payload.role === UserRoles.CUSTOMER) {
       await UserRepository.createCustomerProfile(
         payload.id,
@@ -103,7 +84,6 @@ export async function createUserProfile(
       );
     }
 
-    // Step 4: Write audit log (within the same transaction)
     await UserRepository.writeAuditLog({
       actorId,
       action: "USER_CREATED",
@@ -124,3 +104,97 @@ export async function createUserProfile(
 
   return result;
 }
+
+export async function getUserById(id: string): Promise<UserResponseDTO | null> {
+  return UserRepository.findUserById(id);
+}
+
+export async function getUserByEmail(
+  email: string,
+): Promise<UserResponseDTO | null> {
+  const user = await UserRepository.findUserByEmailBlindIndex(email);
+
+  if (!user) {
+    return null;
+  }
+
+  return user;
+}
+
+export async function deleteUser(id: string, actorId: string): Promise<void> {
+  const user = await UserRepository.findUserById(id);
+  if (!user) {
+    throw new BadRequestError("User not found", "id");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await UserRepository.softDeleteUser(id);
+
+    await UserRepository.writeAuditLog({
+      actorId,
+      action: "USER_DELETED",
+      targetId: id,
+      targetType: "User",
+      oldValues: { email: user.email, role: user.role },
+      ipAddress: undefined,
+      userAgent: undefined,
+    });
+  });
+}
+
+export async function hardDeleteUser(
+  id: string,
+  actorId: string,
+): Promise<void> {
+  const user = await UserRepository.findUserById(id);
+  if (!user) {
+    throw new BadRequestError("User not found", "id");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const hasKey = await hasActiveEncryptionKey(id);
+    if (hasKey) {
+      await destroyUserEncryptionKey(id, tx);
+    }
+
+    await UserRepository.hardDeleteUser(id, tx);
+
+    await UserRepository.writeAuditLog({
+      actorId,
+      action: "USER_HARD_DELETED",
+      targetId: id,
+      targetType: "User",
+      oldValues: { email: user.email, role: user.role },
+      ipAddress: undefined,
+      userAgent: undefined,
+    });
+  });
+}
+
+export async function restoreUser(
+  id: string,
+  actorId: string,
+): Promise<UserResponseDTO> {
+  const user = await UserRepository.restoreUser(id);
+
+  await UserRepository.writeAuditLog({
+    actorId,
+    action: "USER_RESTORED",
+    targetId: id,
+    targetType: "User",
+    newValues: { email: user.email, role: user.role },
+    ipAddress: undefined,
+    userAgent: undefined,
+  });
+
+  return user;
+}
+
+export const UserService = {
+  createUserProfile,
+  getUserById,
+  getUserByEmail,
+  deleteUser,
+  hardDeleteUser,
+  restoreUser,
+};
