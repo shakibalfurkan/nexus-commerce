@@ -1,19 +1,43 @@
 import { z } from "zod";
 import { UserRoles } from "../generated/prisma/enums.js";
 
-export const EventNames = {
-  USER_CREATED: "user-service.user.created",
-  USER_DELETED: "user-service.user.deleted",
-  USER_HARD_DELETED: "user-service.user.hard-deleted",
-  USER_RESTORED: "user-service.user.restored",
-  PROFILE_UPDATED: "user-service.profile.updated",
-  ROLE_CHANGED: "user-service.user.role-changed",
+// ─── Event Name Constants ───
+export const DomainEventTypes = {
+  USER_REGISTERED: "user.registered",
+  USER_DELETED: "user.deleted",
+  USER_HARD_DELETED: "user.hard_deleted",
+  USER_RESTORED: "user.restored",
+  USER_PROFILE_UPDATED: "user.profile_updated",
+  USER_PASSWORD_CHANGED: "user.password_changed",
+  USER_EMAIL_CHANGED: "user.email_changed",
+  USER_ROLE_CHANGED: "user.role_changed",
+  USER_LOCKED: "user.locked",
+  USER_UNLOCKED: "user.unlocked",
+  ORDER_PLACED: "order.placed",
+  PAYMENT_SUCCEEDED: "payment.succeeded",
 } as const;
 
-export type EventName = (typeof EventNames)[keyof typeof EventNames];
+export const CommandTypes = {
+  GENERATE_PDF_INVOICE: "generate.pdf_invoice",
+  SYNC_USER_TO_CRM: "sync.user_to_crm",
+} as const;
+
+export const NotificationTypes = {
+  EMAIL_SEND_WELCOME: "email.send_welcome",
+  SMS_SEND_OTP: "sms.send_otp",
+} as const;
+
+export const DLQEventTypes = {
+  DEAD_LETTER_EVENT: "dead_letter.event",
+} as const;
+
+export type DomainEventType =
+  (typeof DomainEventTypes)[keyof typeof DomainEventTypes];
+
+// ─── Event Payload Schemas (Zod-validated) ───
 
 export const UserCreatedEventSchema = z.object({
-  eventName: z.literal(EventNames.USER_CREATED),
+  eventName: z.literal(DomainEventTypes.USER_REGISTERED),
   aggregateId: z.uuid(),
   payload: z.object({
     userId: z.uuid(),
@@ -32,11 +56,8 @@ export const UserCreatedEventSchema = z.object({
 
 export type UserCreatedEvent = z.infer<typeof UserCreatedEventSchema>;
 
-/**
- * Emitted when a user is soft-deleted.
- */
 export const UserDeletedEventSchema = z.object({
-  eventName: z.literal(EventNames.USER_DELETED),
+  eventName: z.literal(DomainEventTypes.USER_DELETED),
   aggregateId: z.uuid(),
   payload: z.object({
     userId: z.uuid(),
@@ -51,11 +72,8 @@ export const UserDeletedEventSchema = z.object({
 
 export type UserDeletedEvent = z.infer<typeof UserDeletedEventSchema>;
 
-/**
- * Emitted when a user is permanently deleted (GDPR erasure).
- */
 export const UserHardDeletedEventSchema = z.object({
-  eventName: z.literal(EventNames.USER_HARD_DELETED),
+  eventName: z.literal(DomainEventTypes.USER_HARD_DELETED),
   aggregateId: z.uuid(),
   payload: z.object({
     userId: z.uuid(),
@@ -70,11 +88,8 @@ export const UserHardDeletedEventSchema = z.object({
 
 export type UserHardDeletedEvent = z.infer<typeof UserHardDeletedEventSchema>;
 
-/**
- * Emitted when a soft-deleted user is restored.
- */
 export const UserRestoredEventSchema = z.object({
-  eventName: z.literal(EventNames.USER_RESTORED),
+  eventName: z.literal(DomainEventTypes.USER_RESTORED),
   aggregateId: z.uuid(),
   payload: z.object({
     userId: z.uuid(),
@@ -88,3 +103,30 @@ export const UserRestoredEventSchema = z.object({
 });
 
 export type UserRestoredEvent = z.infer<typeof UserRestoredEventSchema>;
+
+// ─── Union Type for All Domain Events ───
+// This is the discriminated union used by the outbox writer.
+// Zod validates the event at the point of emission.
+
+export const DomainEventSchema = z.discriminatedUnion("eventName", [
+  UserCreatedEventSchema,
+  UserDeletedEventSchema,
+  UserHardDeletedEventSchema,
+  UserRestoredEventSchema,
+]);
+
+export type DomainEvent = z.infer<typeof DomainEventSchema>;
+
+// ─── Helper to create event metadata ───
+
+export function createEventMetadata(): {
+  emittedAt: string;
+  source: string;
+  version: number;
+} {
+  return {
+    emittedAt: new Date().toISOString(),
+    source: "user-service",
+    version: 1,
+  };
+}

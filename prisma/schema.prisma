@@ -188,6 +188,7 @@ model OutboxEvent {
   processedAt DateTime?
   createdAt   DateTime     @default(now())
 
+  @@index([status, lockedAt, createdAt], name: "idx_outbox_polling")
   @@index([status, createdAt])
   @@index([status, lockedAt])
   @@index([aggregateId])

@@ -124,7 +124,3 @@ export async function createUserProfile(
 
   return result;
 }
-
-export const UserService = {
-  createUserProfile,
-};

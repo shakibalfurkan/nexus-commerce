@@ -4,6 +4,8 @@ import config from "./config/index.js";
 import logger from "./utils/logger.js";
 import { disconnectPrisma, prisma } from "./lib/prisma.js";
 import { redisClient } from "./config/redis.js";
+import { producer } from "./config/kafka.js";
+import { startOutboxPoller, stopOutboxPoller } from "./events/outboxPoller.js";
 
 let server: Server;
 
@@ -19,6 +21,19 @@ async function main(): Promise<void> {
     // Verify Redis connection
     await redisClient.ping();
     logger.info("Redis Database handshake verified successfully.");
+
+    // Connect Kafka producer once at startup
+    if (producer) {
+      await producer.connect();
+      logger.info("Kafka producer connected successfully.");
+
+      // Start the outbox poller to process pending events
+      await startOutboxPoller();
+    } else {
+      logger.warn(
+        "Kafka credentials not configured — event publishing and outbox poller disabled.",
+      );
+    }
 
     server = createServer(app);
 
@@ -61,7 +76,15 @@ const shutdown = async (signal: string) => {
     }
 
     logger.info("Closing stateful infrastructure channels...");
-    await Promise.allSettled([redisClient.quit(), disconnectPrisma()]);
+
+    // Stop the outbox poller first (no new events while shutting down)
+    await stopOutboxPoller();
+
+    await Promise.allSettled([
+      redisClient.quit(),
+      producer ? producer.disconnect() : Promise.resolve(),
+      disconnectPrisma(),
+    ]);
 
     logger.info(
       "All stateful connections closed cleanly. Graceful exit success.",
