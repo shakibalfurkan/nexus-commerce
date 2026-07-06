@@ -105,9 +105,6 @@ export const UserRestoredEventSchema = z.object({
 export type UserRestoredEvent = z.infer<typeof UserRestoredEventSchema>;
 
 // ─── Union Type for All Domain Events ───
-// This is the discriminated union used by the outbox writer.
-// Zod validates the event at the point of emission.
-
 export const DomainEventSchema = z.discriminatedUnion("eventName", [
   UserCreatedEventSchema,
   UserDeletedEventSchema,
