@@ -20,6 +20,15 @@ model User {
   isBlocked Boolean @default(false)
   isDeleted Boolean @default(false)
 
+  blockedAt    DateTime?
+  blockReason  String?
+  blockedUntil DateTime?
+
+  deletedAt        DateTime?
+  canReactivate    Boolean       @default(true)
+  deletionType     DeletionType?
+  reactivateWithin DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -229,6 +238,11 @@ enum UserRoles {
   ADMIN
   SELLER
   CUSTOMER
+}
+
+enum DeletionType {
+  SOFT
+  PERMANENT
 }
 
 enum OutboxStatus {
