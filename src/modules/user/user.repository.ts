@@ -27,7 +27,7 @@ const userProfileIncludes = {
   },
   sellerProfile: {
     include: {
-      shopAddress: true,
+      shopAddresses: true,
     },
   },
   adminProfile: true,
@@ -233,7 +233,7 @@ export async function createSellerProfile(
       shopName: shopData.shopName,
       shopEmail: shopData.shopEmail,
       shopPhone: shopData.shopPhone,
-      shopAddress: {
+      shopAddresses: {
         create: {
           street: shopData.shopAddress.street,
           city: shopData.shopAddress.city,
@@ -242,6 +242,7 @@ export async function createSellerProfile(
           country: shopData.shopAddress.country,
           lat: shopData.shopAddress.coordinates?.lat ?? null,
           lng: shopData.shopAddress.coordinates?.lng ?? null,
+          isPrimary: true,
         },
       },
     },

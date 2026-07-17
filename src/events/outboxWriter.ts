@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import type { PrismaTransaction } from "../types/database.types.js";
-import type { DomainEvent } from "./eventTypes.js";
+import type { TDomainEvent, TNotificationEvent } from "./eventTypes.js";
 import { KafkaTopics } from "../config/kafka.js";
 
 // ─── Topic Router ───
@@ -23,7 +23,7 @@ const eventTopicMap: Record<
   "generate.pdf_invoice": KafkaTopics.COMMANDS,
   "sync.user_to_crm": KafkaTopics.COMMANDS,
   "email.send_welcome": KafkaTopics.NOTIFICATIONS,
-  "sms.send_otp": KafkaTopics.NOTIFICATIONS,
+  "email.send_otp": KafkaTopics.NOTIFICATIONS,
   "dead_letter.event": KafkaTopics.DLQ,
 };
 
@@ -39,7 +39,7 @@ export function resolveTopic(eventName: string): string {
 
 export async function writeOutboxEvent(
   tx: PrismaTransaction,
-  event: DomainEvent,
+  event: TDomainEvent | TNotificationEvent,
   traceparent?: string,
 ): Promise<string> {
   const id = uuidv4();
@@ -62,7 +62,15 @@ export async function writeOutboxEvent(
 
 export async function emitDomainEvent(
   tx: PrismaTransaction,
-  event: DomainEvent,
+  event: TDomainEvent,
+  traceparent?: string,
+): Promise<string> {
+  return writeOutboxEvent(tx, event, traceparent);
+}
+
+export async function emitNotificationEvent(
+  tx: PrismaTransaction,
+  event: TNotificationEvent,
   traceparent?: string,
 ): Promise<string> {
   return writeOutboxEvent(tx, event, traceparent);

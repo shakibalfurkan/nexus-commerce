@@ -90,6 +90,18 @@ export interface ShippingAddressDTO {
   label: string | null;
 }
 
+export interface ShopAddressDTO {
+  id: string;
+  street: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  lat: number | null;
+  lng: number | null;
+  isPrimary: boolean;
+}
+
 export interface SellerProfileDTO {
   firstName: string;
   lastName: string;
@@ -98,15 +110,7 @@ export interface SellerProfileDTO {
   shopName: string;
   shopEmail: string;
   shopPhone: string;
-  shopAddress: {
-    street: string;
-    city: string;
-    state: string;
-    postalCode: string;
-    country: string;
-    lat: number | null;
-    lng: number | null;
-  } | null;
+  shopAddresses: ShopAddressDTO[];
   stripeConnectId: string | null;
   onboardingComplete: boolean;
   commissionRate: number;
@@ -132,14 +136,13 @@ import type {
   SellerProfile,
   AdminProfile,
   ShippingAddress,
-  ShopAddress,
 } from "../../generated/prisma/client.js";
 
 type UserWithProfiles = User & {
   customerProfile?:
     | (CustomerProfile & { shippingAddresses: ShippingAddress[] })
     | null;
-  sellerProfile?: (SellerProfile & { shopAddress?: ShopAddress | null }) | null;
+  sellerProfile?: SellerProfile | null;
   adminProfile?: AdminProfile | null;
 };
 
@@ -172,7 +175,7 @@ function mapCustomerProfile(
 }
 
 function mapSellerProfile(
-  profile: SellerProfile & { shopAddress?: ShopAddress | null },
+  profile: SellerProfile & { shopAddresses: ShopAddress[] },
 ): SellerProfileDTO {
   return {
     firstName: profile.firstName,
@@ -182,17 +185,17 @@ function mapSellerProfile(
     shopName: profile.shopName,
     shopEmail: profile.shopEmail,
     shopPhone: profile.shopPhone,
-    shopAddress: profile.shopAddress
-      ? {
-          street: profile.shopAddress.street,
-          city: profile.shopAddress.city,
-          state: profile.shopAddress.state,
-          postalCode: profile.shopAddress.postalCode,
-          country: profile.shopAddress.country,
-          lat: profile.shopAddress.lat ?? null,
-          lng: profile.shopAddress.lng ?? null,
-        }
-      : null,
+    shopAddresses: profile.shopAddresses.map((addr) => ({
+      id: addr.id,
+      street: addr.street,
+      city: addr.city,
+      state: addr.state,
+      postalCode: addr.postalCode,
+      country: addr.country,
+      lat: addr.lat ?? null,
+      lng: addr.lng ?? null,
+      isPrimary: addr.isPrimary,
+    })),
     stripeConnectId: profile.stripeConnectId ?? null,
     onboardingComplete: profile.onboardingComplete,
     commissionRate: profile.commissionRate,

@@ -8,8 +8,14 @@ import {
   destroyUserEncryptionKey,
   hasActiveEncryptionKey,
 } from "../../crypto/keyManager.js";
-import { emitDomainEvent } from "../../events/outboxWriter.js";
-import { DomainEventTypes } from "../../events/eventTypes.js";
+import {
+  emitDomainEvent,
+  emitNotificationEvent,
+} from "../../events/outboxWriter.js";
+import {
+  DomainEventTypes,
+  NotificationTypes,
+} from "../../events/eventTypes.js";
 
 // ─── Domain Constants ───
 

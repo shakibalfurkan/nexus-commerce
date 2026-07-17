@@ -71,14 +71,6 @@ export class CircuitBreaker {
     };
   }
 
-  /**
-   * Executes a protected async function with circuit breaker logic.
-   *
-   * @param fn - The async function to protect
-   * @param fallback - Optional fallback function to call when circuit is OPEN
-   * @returns The result of the function or fallback
-   * @throws {CircuitBreakerError} If circuit is OPEN and no fallback provided
-   */
   async execute<T>(
     fn: () => Promise<T>,
     fallback?: () => Promise<T>,

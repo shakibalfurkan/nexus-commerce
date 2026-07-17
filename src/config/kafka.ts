@@ -6,9 +6,6 @@ const { broker, username, password } = config.kafka;
 
 export const KafkaTopics = {
   DOMAIN_EVENTS: "domain-events",
-  COMMANDS: "commands",
-  NOTIFICATIONS: "notifications",
-  ANALYTICS: "analytics-events",
   DLQ: "dead-letter-queue",
 } as const;
 

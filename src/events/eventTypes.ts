@@ -24,15 +24,18 @@ export const CommandTypes = {
 
 export const NotificationTypes = {
   EMAIL_SEND_WELCOME: "email.send_welcome",
-  SMS_SEND_OTP: "sms.send_otp",
+  EMAIL_SEND_OTP: "email.send_otp",
 } as const;
 
 export const DLQEventTypes = {
   DEAD_LETTER_EVENT: "dead_letter.event",
 } as const;
 
-export type DomainEventType =
+export type TDomainEventType =
   (typeof DomainEventTypes)[keyof typeof DomainEventTypes];
+
+export type TNotificationEventType =
+  (typeof NotificationTypes)[keyof typeof NotificationTypes];
 
 // ─── Event Payload Schemas (Zod-validated) ───
 
@@ -112,7 +115,54 @@ export const DomainEventSchema = z.discriminatedUnion("eventName", [
   UserRestoredEventSchema,
 ]);
 
-export type DomainEvent = z.infer<typeof DomainEventSchema>;
+export type TDomainEvent = z.infer<typeof DomainEventSchema>;
+
+// ─── Notification Event Schemas ───
+
+export const UserWelcomeNotificationSchema = z.object({
+  eventName: z.literal(NotificationTypes.EMAIL_SEND_WELCOME),
+  aggregateId: z.uuid(),
+  payload: z.object({
+    userName: z.string(),
+    email: z.email(),
+  }),
+  metadata: z.object({
+    emittedAt: z.iso.datetime(),
+    source: z.string().default("user-service"),
+    version: z.number().int().positive().default(1),
+  }),
+});
+
+export type UserWelcomeNotification = z.infer<
+  typeof UserWelcomeNotificationSchema
+>;
+
+export const SendOtpNotificationSchema = z.object({
+  eventName: z.literal(NotificationTypes.EMAIL_SEND_OTP),
+  aggregateId: z.uuid(),
+  payload: z.object({
+    reason: z.enum(["email-verification", "auth-verification"]),
+    email: z.email(),
+    userName: z.string(),
+    otp: z.string(),
+    userType: z.enum(["CUSTOMER", "SELLER"]),
+  }),
+  metadata: z.object({
+    emittedAt: z.iso.datetime(),
+    source: z.string().default("user-service"),
+    version: z.number().int().positive().default(1),
+  }),
+});
+
+export type SendOtpNotification = z.infer<typeof SendOtpNotificationSchema>;
+
+// ─── Union Type for All Notification Events ───
+export const NotificationEventSchema = z.discriminatedUnion("eventName", [
+  UserWelcomeNotificationSchema,
+  SendOtpNotificationSchema,
+]);
+
+export type TNotificationEvent = z.infer<typeof NotificationEventSchema>;
 
 // ─── Helper to create event metadata ───
 
