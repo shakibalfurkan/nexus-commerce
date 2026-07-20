@@ -39,5 +39,12 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true
-  }
+  },
+
+  "baseUrl": ".",
+  "paths": {
+    "@/generated/*": ["generated/*"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "generated"]
 }

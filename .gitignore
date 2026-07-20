@@ -57,3 +57,5 @@ lerna-debug.log*
 /src/generated/prisma
 
 /generated/prisma
+
+/generated/prisma
