@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Credential {
+  id       String      @id @default(uuid())
+  email    String      @unique
+  password String
+  role     UserRoles[]
+
+  // ---- Replicated from user-service via events. auth-service NEVER writes these directly;
+  // it only updates them when consuming a UserBlocked/UserUnblocked/UserDeleted/UserReactivated event ----
+  isActive         Boolean       @default(true)
+  isBlocked        Boolean       @default(false)
+  blockedUntil     DateTime?
+  isDeleted        Boolean       @default(false)
+  deletedAt        DateTime?
+  canReactivate    Boolean       @default(true)
+  deletionType     DeletionType?
+  reactivateWithin DateTime?
+  syncedVersion    Int           @default(0)
+
+  // ---- auth-service OWNS and WRITES these outright: pure security/session concerns ----
+  lastLogin           DateTime?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  refreshTokens  RefreshToken[]
+  passwordResets PasswordReset[]
+
+  @@index([email])
+  @@index([role])
+  @@index([deletedAt])
+  @@index([reactivateWithin])
+  @@map("credentials")
+}
+
+model RefreshToken {
+  id           String   @id @default(uuid())
+  token        String   @unique
+  credentialId String
+  familyId     String   @default(uuid())
+  expiresAt    DateTime
+  isRevoked    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  credential Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([credentialId])
+  @@index([credentialId, familyId])
+  @@map("refresh_tokens")
+}
+
+model PasswordReset {
+  id           String    @id @default(uuid())
+  credentialId String
+  resetToken   String    @unique
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  credential Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+  @@index([resetToken])
+  @@map("password_resets")
+}
+
+model AuditLog {
+  id         String  @id @default(uuid())
+  actorId    String
+  action     String
+  targetId   String
+  targetType String
+  oldValues  Json?
+  newValues  Json?
+  diff       Json?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetId, targetType])
+  @@index([action, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model OutboxEvent {
+  id          String  @id @default(uuid())
+  aggregateId String
+  eventType   String
+  payload     Json
+  traceparent String?
+
+  status      OutboxStatus @default(PENDING)
+  retryCount  Int          @default(0)
+  maxRetries  Int          @default(5)
+  lastError   String?
+  lockedAt    DateTime?
+  lockedBy    String?
+  processedAt DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([status, lockedAt, createdAt], name: "idx_outbox_polling")
+  @@index([status, createdAt])
+  @@index([status, lockedAt])
+  @@index([aggregateId])
+  @@map("outbox_events")
+}
+
+model IdempotencyRecord {
+  id                 String   @id
+  key                String   @unique
+  responseStatusCode Int
+  responseBody       Json?
+  expiresAt          DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@map("idempotency_records")
+}
+
+enum DeletionType {
+  SOFT
+  PERMANENT
+}
+
+enum UserRoles {
+  SUPER_ADMIN
+  ADMIN
+  SELLER
+  CUSTOMER
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  DEAD
+}
