@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <meta name="color-scheme" content="light dark"/>
+  <meta name="supported-color-schemes" content="light dark"/>
+  <title>Order Confirmed — ClassyShop</title>
+  <%#
+    Required dynamic values:
+      userName      — customer name
+      orderNumber   — e.g. "ORD-48291"
+      orderDate     — e.g. new Date().toLocaleDateString()
+      items         — array of { name, qty, price, imageUrl? }
+      subtotal      — e.g. "৳1,250.00"
+      shipping      — e.g. "৳60.00" or "Free"
+      total         — e.g. "৳1,310.00"
+      shippingAddress — string, e.g. "House 12, Road 4, Dhaka 1207"
+      estimatedDelivery — e.g. "3–5 business days"
+      trackingUrl   — link to tracking page
+  %>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Roboto',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background-color:#F8FAFF;-webkit-font-smoothing:antialiased}
+    a{text-decoration:none}
+    img{border:0;display:block}
+
+    .wrapper{width:100%;background:#F8FAFF;padding:48px 16px}
+    .container{max-width:580px;margin:0 auto;background:#FFFFFF;border-radius:20px;overflow:hidden;border:1px solid #E2EAFF;box-shadow:0 4px 24px rgba(37,99,235,0.08)}
+
+    /* Header */
+    .header{background-color:#2563EB;padding:28px 40px;text-align:center}
+
+    /* Hero */
+    .hero{background:linear-gradient(160deg,#16A34A 0%,#15803D 100%);padding:28px 40px 36px;text-align:center}
+    .hero-icon{font-size:42px;margin-bottom:12px;display:block;line-height:1}
+    .hero-title{font-family:'Poppins','Roboto',sans-serif;font-size:26px;font-weight:700;color:#fff;letter-spacing:-0.4px;margin-bottom:6px}
+    .hero-sub{font-size:14px;color:rgba(255,255,255,0.82);line-height:1.5}
+
+    /* Order meta strip */
+    .meta-strip{background:#F0FDF4;border-bottom:1px solid #DCFCE7;padding:16px 40px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+    .meta-item{font-size:12px;color:#64748B}
+    .meta-item strong{display:block;font-size:13px;font-weight:600;color:#0F172A;margin-top:2px}
+
+    /* Body */
+    .body{padding:36px 40px 32px}
+    .greeting{font-size:16px;color:#0F172A;margin-bottom:8px;line-height:1.6}
+    .greeting strong{font-weight:700}
+    .text{font-size:14px;color:#64748B;line-height:1.85;margin-bottom:28px}
+
+    /* Section label */
+    .section-label{font-size:10px;font-weight:600;color:#94A3B8;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px}
+
+    /* Order items */
+    .items-box{border:1px solid #E2EAFF;border-radius:12px;overflow:hidden;margin-bottom:8px}
+    .item-row{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #EFF3FF;gap:12px}
+    .item-row:last-child{border-bottom:none}
+    .item-name{font-size:13px;color:#0F172A;font-weight:500;flex:1}
+    .item-qty{font-size:12px;color:#94A3B8;margin-top:2px}
+    .item-price{font-size:13px;font-weight:600;color:#0F172A;white-space:nowrap}
+
+    /* Totals */
+    .totals{background:#F8FAFF;border-radius:12px;border:1px solid #E2EAFF;overflow:hidden;margin-bottom:28px}
+    .total-row{display:flex;justify-content:space-between;padding:11px 16px;font-size:13px;border-bottom:1px solid #EFF3FF}
+    .total-row:last-child{border-bottom:none;background:#EFF3FF}
+    .t-label{color:#64748B}
+    .t-value{font-weight:500;color:#0F172A}
+    .t-value.grand{font-size:15px;font-weight:700;color:#2563EB}
+    .t-label.grand{font-size:14px;font-weight:600;color:#0F172A}
+
+    /* Info cards row */
+    .info-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:28px}
+    .info-card{background:#F8FAFF;border:1px solid #E2EAFF;border-radius:12px;padding:16px}
+    .info-card-title{font-size:10px;font-weight:600;color:#94A3B8;letter-spacing:1.6px;text-transform:uppercase;margin-bottom:8px}
+    .info-card p{font-size:13px;color:#0F172A;line-height:1.6}
+
+    /* CTA */
+    .cta-wrap{text-align:center;margin-bottom:28px}
+    .cta-btn{display:inline-block;background:#2563EB;color:#fff;font-family:'Poppins','Roboto',sans-serif;font-size:14px;font-weight:600;padding:14px 40px;border-radius:10px;letter-spacing:0.2px}
+
+    /* Divider */
+    .divider{height:1px;background:#EFF3FF;margin:0 0 24px}
+
+    /* Support note */
+    .support-note{background:#F0F5FF;border-radius:12px;padding:16px 20px;text-align:center}
+    .support-note p{font-size:13px;color:#3B4DAC;line-height:1.6}
+    .support-note a{color:#2563EB;font-weight:600}
+
+    /* Footer */
+    .footer{background:#F8FAFF;border-top:1px solid #E2EAFF;padding:24px 40px;text-align:center}
+    .footer-links{margin-bottom:12px}
+    .footer-link{font-size:12px;color:#2563EB;font-weight:500;margin:0 8px}
+    .footer-info{font-size:12px;color:#94A3B8;line-height:1.8}
+    .footer-info a{color:#2563EB;font-weight:500}
+    .copyright{margin-top:10px;font-size:11px;color:#CBD5E1}
+
+    @media(prefers-color-scheme:dark){
+      body,.wrapper{background-color:#0B1120!important}
+      .container{background:#131E35!important;border-color:rgba(255,255,255,0.08)!important;box-shadow:0 4px 24px rgba(0,0,0,0.4)!important}
+      .meta-strip{background:#052E16!important;border-color:rgba(34,197,94,0.15)!important}
+      .meta-item{color:#64748B!important}
+      .meta-item strong{color:#F1F5F9!important}
+      .greeting{color:#F1F5F9!important}
+      .greeting strong{color:#F1F5F9!important}
+      .text{color:#94A3B8!important}
+      .section-label{color:#334155!important}
+      .items-box{border-color:rgba(255,255,255,0.07)!important}
+      .item-row{border-color:rgba(255,255,255,0.05)!important}
+      .item-name{color:#F1F5F9!important}
+      .item-qty{color:#475569!important}
+      .item-price{color:#F1F5F9!important}
+      .totals{background:#1A2744!important;border-color:rgba(255,255,255,0.07)!important}
+      .total-row{border-color:rgba(255,255,255,0.05)!important}
+      .total-row:last-child{background:#1E3A5F!important}
+      .t-label{color:#64748B!important}
+      .t-value{color:#F1F5F9!important}
+      .t-value.grand{color:#3B82F6!important}
+      .t-label.grand{color:#F1F5F9!important}
+      .info-cards .info-card{background:#1A2744!important;border-color:rgba(255,255,255,0.07)!important}
+      .info-card-title{color:#334155!important}
+      .info-card p{color:#CBD5E1!important}
+      .divider{background:rgba(255,255,255,0.06)!important}
+      .support-note{background:#1A2744!important}
+      .support-note p{color:#93C5FD!important}
+      .support-note a{color:#3B82F6!important}
+      .footer{background:#0F1929!important;border-color:rgba(255,255,255,0.07)!important}
+      .footer-link{color:#3B82F6!important}
+      .footer-info{color:#475569!important}
+      .footer-info a{color:#3B82F6!important}
+      .copyright{color:#1E293B!important}
+    }
+    @media(max-width:600px){
+      .body,.header,.hero,.footer,.meta-strip{padding-left:24px!important;padding-right:24px!important}
+      .info-cards{grid-template-columns:1fr!important}
+      .hero-title{font-size:22px!important}
+      .meta-strip{flex-direction:column;gap:12px}
+    }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+<div class="container">
+
+  <div class="header">
+    <img src="https://res.cloudinary.com/duz75d1fh/image/upload/v1774184955/classyshop-logo-White-no-bg_yslre0.png"
+         alt="ClassyShop" width="160" height="42"
+         style="display:block;margin:0 auto;border:0;max-width:100%;height:auto"/>
+  </div>
+
+  <!-- Green hero for success/confirmation context -->
+  <div class="hero">
+    <span class="hero-icon">✅</span>
+    <div class="hero-title">Order Confirmed!</div>
+    <div class="hero-sub">We've received your order and it's being processed</div>
+  </div>
+
+  <!-- Order meta -->
+  <div class="meta-strip">
+    <div class="meta-item">Order Number <strong>#<%= orderNumber %></strong></div>
+    <div class="meta-item">Order Date <strong><%= orderDate %></strong></div>
+    <div class="meta-item">Estimated Delivery <strong><%= estimatedDelivery %></strong></div>
+  </div>
+
+  <div class="body">
+    <p class="greeting">Hi, <strong><%= userName %></strong> 👋</p>
+    <p class="text">
+      Thank you for shopping with ClassyShop! Your order has been placed successfully.
+      You'll receive a shipping notification with tracking details once your order is dispatched.
+    </p>
+
+    <!-- Items -->
+    <p class="section-label">Order Summary</p>
+    <div class="items-box">
+      <% items.forEach(function(item){ %>
+      <div class="item-row">
+        <div style="flex:1">
+          <div class="item-name"><%= item.name %></div>
+          <div class="item-qty">Qty: <%= item.qty %></div>
+        </div>
+        <div class="item-price"><%= item.price %></div>
+      </div>
+      <% }); %>
+    </div>
+
+    <!-- Totals -->
+    <div class="totals">
+      <div class="total-row">
+        <span class="t-label">Subtotal</span>
+        <span class="t-value"><%= subtotal %></span>
+      </div>
+      <div class="total-row">
+        <span class="t-label">Shipping</span>
+        <span class="t-value"><%= shipping %></span>
+      </div>
+      <div class="total-row">
+        <span class="t-label grand">Total</span>
+        <span class="t-value grand"><%= total %></span>
+      </div>
+    </div>
+
+    <!-- Shipping & payment info -->
+    <div class="info-cards">
+      <div class="info-card">
+        <div class="info-card-title">Shipping To</div>
+        <p><%= shippingAddress %></p>
+      </div>
+      <div class="info-card">
+        <div class="info-card-title">Delivery</div>
+        <p><%= estimatedDelivery %></p>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-wrap">
+      <a href="<%= trackingUrl %>" class="cta-btn">Track Your Order →</a>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="support-note">
+      <p>Have questions about your order? <a href="mailto:support@classyshop.com">Contact our support team</a> — we're available 24/7.</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-links">
+      <a href="https://classyshop.com/orders" class="footer-link">My Orders</a>
+      <a href="https://classyshop.com/shop" class="footer-link">Continue Shopping</a>
+      <a href="https://classyshop.com/help" class="footer-link">Help Center</a>
+    </div>
+    <div class="footer-info">
+      <a href="mailto:support@classyshop.com">support@classyshop.com</a>
+      &nbsp;·&nbsp; +880 1813 333 333 &nbsp;·&nbsp; Dhaka, Bangladesh
+    </div>
+    <p class="copyright">
+      © <%= new Date().getFullYear() %> ClassyShop. All rights reserved. &nbsp;·&nbsp;
+      <a href="#" style="color:#CBD5E1">Unsubscribe</a> &nbsp;·&nbsp;
+      <a href="#" style="color:#CBD5E1">Privacy Policy</a>
+    </p>
+  </div>
+
+</div>
+</div>
+</body>
+</html>

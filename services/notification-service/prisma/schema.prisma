@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model NotificationLog {
+  id            String             @id @default(uuid())
+  eventId       String             @unique
+  eventType     String
+  recipient     String
+  subject       String?
+  status        NotificationStatus @default(PENDING)
+  attemptCount  Int                @default(0)
+  maxRetries    Int                @default(3)
+  lastError     String?
+  traceparent   String?
+  correlationId String?
+  processedAt   DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([status, createdAt])
+  @@index([recipient, createdAt])
+  @@index([eventType])
+  @@map("notification_logs")
+}
+
+model DeadLetterEntry {
+  id            String   @id @default(uuid())
+  eventId       String
+  eventType     String
+  recipient     String
+  payload       Json
+  failureReason String
+  attemptCount  Int
+  traceparent   String?
+  correlationId String?
+  enqueuedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([eventType])
+  @@index([enqueuedAt])
+  @@map("dead_letter_queue")
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  DLQ
+}

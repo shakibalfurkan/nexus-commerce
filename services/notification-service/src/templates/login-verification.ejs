@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  <title>Login Verification — ClassyShop</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
+
+    body {
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background-color: #F8FAFF;
+      -webkit-font-smoothing: antialiased
+    }
+
+    a {
+      text-decoration: none
+    }
+
+    img {
+      border: 0;
+      display: block
+    }
+
+    .wrapper {
+      width: 100%;
+      background: #F8FAFF;
+      padding: 48px 16px
+    }
+
+    .container {
+      max-width: 580px;
+      margin: 0 auto;
+      background: #FFFFFF;
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1px solid #E2EAFF;
+      box-shadow: 0 4px 24px rgba(37, 99, 235, 0.08)
+    }
+
+    /* Header */
+    .header {
+      background-color: #2563EB;
+      padding: 28px 40px;
+      text-align: center
+    }
+
+    /* Hero — deeper navy = security urgency */
+    .hero {
+      background: linear-gradient(160deg, #1E3A8A 0%, #1D4ED8 100%);
+      padding: 8px 40px 36px;
+      text-align: center
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(239, 68, 68, 0.18);
+      color: #FCA5A5;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 6px 18px;
+      border-radius: 100px;
+      margin-bottom: 16px
+    }
+
+    .badge-dot {
+      width: 7px;
+      height: 7px;
+      background: #EF4444;
+      border-radius: 50%;
+      flex-shrink: 0
+    }
+
+    .hero-title {
+      font-family: 'Poppins', 'Roboto', sans-serif;
+      font-size: 26px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.3;
+      letter-spacing: -0.4px
+    }
+
+    /* Body */
+    .body {
+      padding: 40px 40px 32px
+    }
+
+    .greeting {
+      font-size: 16px;
+      color: #0F172A;
+      margin-bottom: 8px;
+      line-height: 1.6
+    }
+
+    .greeting strong {
+      font-weight: 700;
+      color: #0F172A
+    }
+
+    .text {
+      font-size: 14px;
+      color: #64748B;
+      line-height: 1.85;
+      margin-bottom: 32px
+    }
+
+    /* OTP */
+    .otp-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: #94A3B8;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-align: center;
+      margin-bottom: 12px
+    }
+
+    .otp-box {
+      background: #F0F5FF;
+      border: 1.5px dashed #93C5FD;
+      border-radius: 14px;
+      padding: 24px 20px;
+      text-align: center;
+      margin-bottom: 12px
+    }
+
+    .shield-wrap {
+      margin-bottom: 12px
+    }
+
+    .otp-code {
+      font-family: 'Courier New', monospace;
+      font-size: 46px;
+      font-weight: 700;
+      color: #2563EB;
+      letter-spacing: 16px;
+      line-height: 1
+    }
+
+    .otp-expiry {
+      text-align: center;
+      font-size: 12px;
+      color: #94A3B8;
+      margin-bottom: 32px
+    }
+
+    .otp-expiry span {
+      color: #DC2626;
+      font-weight: 600
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: #EFF3FF;
+      margin: 0 0 28px
+    }
+
+    /* Security alert */
+    .alert {
+      background: #FFF1F2;
+      border: 1.5px solid #FECDD3;
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 24px
+    }
+
+    .alert-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Poppins', 'Roboto', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: #BE123C;
+      margin-bottom: 8px
+    }
+
+    .alert p {
+      font-size: 13px;
+      color: #9F1239;
+      line-height: 1.7
+    }
+
+    .alert strong {
+      font-weight: 600
+    }
+
+    /* Details */
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: #94A3B8;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 12px
+    }
+
+    .details {
+      background: #F8FAFF;
+      border-radius: 12px;
+      border: 1px solid #E2EAFF;
+      overflow: hidden
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      font-size: 13px;
+      border-bottom: 1px solid #EFF3FF
+    }
+
+    .detail-row:last-child {
+      border-bottom: none
+    }
+
+    .d-label {
+      color: #94A3B8
+    }
+
+    .d-value {
+      color: #0F172A;
+      font-weight: 500
+    }
+
+    .d-link {
+      color: #2563EB;
+      font-weight: 600
+    }
+
+    /* Footer */
+    .footer {
+      background: #F8FAFF;
+      border-top: 1px solid #E2EAFF;
+      padding: 24px 40px;
+      text-align: center
+    }
+
+    .footer-info {
+      font-size: 12px;
+      color: #94A3B8;
+      line-height: 1.8
+    }
+
+    .footer-info a {
+      color: #2563EB;
+      font-weight: 500
+    }
+
+    .copyright {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #CBD5E1
+    }
+
+    @media(prefers-color-scheme:dark) {
+
+      body,
+      .wrapper {
+        background-color: #0B1120 !important
+      }
+
+      .container {
+        background: #131E35 !important;
+        border-color: rgba(255, 255, 255, 0.08) !important;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4) !important
+      }
+
+      .greeting {
+        color: #F1F5F9 !important
+      }
+
+      .greeting strong {
+        color: #F1F5F9 !important
+      }
+
+      .text {
+        color: #94A3B8 !important
+      }
+
+      .otp-box {
+        background: #1A2744 !important;
+        border-color: rgba(59, 130, 246, 0.3) !important
+      }
+
+      .otp-code {
+        color: #3B82F6 !important
+      }
+
+      .otp-expiry {
+        color: #475569 !important
+      }
+
+      .divider {
+        background: rgba(255, 255, 255, 0.06) !important
+      }
+
+      .alert {
+        background: #1A0608 !important;
+        border-color: rgba(239, 68, 68, 0.2) !important
+      }
+
+      .alert-head {
+        color: #FCA5A5 !important
+      }
+
+      .alert p {
+        color: #FDA4AF !important
+      }
+
+      .section-label {
+        color: #334155 !important
+      }
+
+      .details {
+        background: #1A2744 !important;
+        border-color: rgba(255, 255, 255, 0.07) !important
+      }
+
+      .detail-row {
+        border-color: rgba(255, 255, 255, 0.05) !important
+      }
+
+      .d-label {
+        color: #475569 !important
+      }
+
+      .d-value {
+        color: #F1F5F9 !important
+      }
+
+      .d-link {
+        color: #3B82F6 !important
+      }
+
+      .footer {
+        background: #0F1929 !important;
+        border-color: rgba(255, 255, 255, 0.07) !important
+      }
+
+      .footer-info {
+        color: #475569 !important
+      }
+
+      .footer-info a {
+        color: #3B82F6 !important
+      }
+
+      .copyright {
+        color: #1E293B !important
+      }
+    }
+
+    @media(max-width:600px) {
+
+      .body,
+      .header,
+      .hero,
+      .footer {
+        padding-left: 24px !important;
+        padding-right: 24px !important
+      }
+
+      .otp-code {
+        font-size: 36px !important;
+        letter-spacing: 10px !important
+      }
+
+      .hero-title {
+        font-size: 22px !important
+      }
+
+      .detail-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrapper">
+    <div class="container">
+
+      <div class="header">
+        <img src="https://res.cloudinary.com/duz75d1fh/image/upload/v1774184955/classyshop-logo-White-no-bg_yslre0.png"
+          alt="ClassyShop" width="160" height="42"
+          style="display:block;margin:0 auto;border:0;max-width:100%;height:auto" />
+      </div>
+
+      <div class="hero">
+        <div class="badge"><span class="badge-dot"></span>Security Alert</div>
+        <div class="hero-title">Login verification required</div>
+      </div>
+
+      <div class="body">
+        <p class="greeting">Hi, <strong>
+            <%= userName %>
+          </strong></p>
+        <p class="text">
+          We received a sign-in request for your ClassyShop account. Use the one-time code below
+          to complete login. This code is time-sensitive and single-use — treat it like a password.
+        </p>
+
+        <p class="otp-label">Your one-time login code</p>
+        <div class="otp-box">
+          <div class="shield-wrap">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" style="display:block;margin:0 auto">
+              <path d="M12 2L3 6v6c0 5.25 3.75 10.14 9 11.25C17.25 22.14 21 17.25 21 12V6l-9-4z" fill="#DBEAFE"
+                stroke="#2563EB" stroke-width="1.5" />
+              <path d="M9 12l2 2 4-4" stroke="#2563EB" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+          </div>
+          <div class="otp-code">
+            <%= otp %>
+          </div>
+        </div>
+        <p class="otp-expiry">Expires in <span>5 minutes</span> &nbsp;·&nbsp; Never share this with anyone</p>
+
+        <div class="divider"></div>
+
+        <div class="alert">
+          <div class="alert-head">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="flex-shrink:0">
+              <path
+                d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                stroke="#BE123C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            Never share this code
+          </div>
+          <p>ClassyShop will <strong>never</strong> ask for this code by phone, chat, or another email.
+            If someone requests this code, your account may be at risk — ignore them.</p>
+        </div>
+
+        <p class="section-label">Login details</p>
+        <div class="details">
+          <div class="detail-row">
+            <span class="d-label">Time</span>
+            <span class="d-value">
+              <%= new Date().toUTCString() %>
+            </span>
+          </div>
+          <div class="detail-row">
+            <span class="d-label">Not you?</span>
+            <a href="mailto:support@classyshop.com" class="d-link">Report immediately →</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="footer-info">
+          If you didn't attempt to log in, <a href="mailto:support@classyshop.com">contact support immediately</a>
+          &nbsp;·&nbsp; +880 1813 333 333
+        </div>
+        <p class="copyright">
+          © <%= new Date().getFullYear() %> ClassyShop. All rights reserved. &nbsp;·&nbsp;
+            <a href="#" style="color:#CBD5E1">Unsubscribe</a> &nbsp;·&nbsp;
+            <a href="#" style="color:#CBD5E1">Privacy Policy</a>
+        </p>
+      </div>
+
+    </div>
+  </div>
+</body>
+
+</html>
