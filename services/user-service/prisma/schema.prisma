@@ -1,0 +1,287 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id      String      @id
+  email   String      @unique
+  role    UserRoles[]
+  version Int         @default(0)
+
+  isActive  Boolean @default(true)
+  isBlocked Boolean @default(false)
+  isDeleted Boolean @default(false)
+
+  blockedAt    DateTime?
+  blockReason  String?
+  blockedUntil DateTime?
+
+  deletedAt        DateTime?
+  canReactivate    Boolean       @default(true)
+  deletionType     DeletionType?
+  reactivateWithin DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customerProfile CustomerProfile?
+  sellerProfile   SellerProfile?
+  adminProfile    AdminProfile?
+
+  @@index([email])
+  @@index([isActive, role])
+  @@index([isBlocked, isActive])
+  @@index([isDeleted])
+  @@map("users")
+}
+
+model CustomerProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  // ─── Identity ───
+  firstName       String
+  lastName        String
+  phone           String?
+  phoneVerifiedAt DateTime?
+  avatar          String?
+  dateOfBirth     DateTime?
+
+  // ─── Localization ───
+  locale            String @default("en-US")
+  timezone          String @default("UTC")
+  preferredCurrency String @default("USD")
+
+  // ─── Consent & legal ───
+  termsAcceptedAt  DateTime?
+  termsVersion     String?
+  marketingOptIn   Boolean   @default(false)
+  marketingOptInAt DateTime?
+
+  // ─── Attribution ───
+  signupSource   String?
+  referralCode   String  @unique
+  referredByCode String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shippingAddresses ShippingAddress[]
+
+  stats CustomerStats?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@map("customer_profiles")
+}
+
+model ShippingAddress {
+  id String @id @default(uuid())
+
+  recipientName String
+  street        String
+  apartment     String?
+  city          String
+  state         String
+  postalCode    String
+  country       String
+
+  isDefault Boolean @default(false)
+  label     String?
+
+  profileId String
+  profile   CustomerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([profileId])
+  @@index([profileId, isDefault])
+  @@map("shipping_addresses")
+}
+
+model CustomerStats {
+  customerProfileId String @id
+
+  lifetimeValue Decimal   @default(0) @db.Decimal(12, 2)
+  orderCount    Int       @default(0)
+  lastOrderAt   DateTime?
+
+  loyaltyPoints Int          @default(0)
+  loyaltyTier   CustomerTier @default(BRONZE)
+  updatedAt     DateTime     @updatedAt
+
+  profile CustomerProfile @relation(fields: [customerProfileId], references: [id], onDelete: Cascade)
+
+  @@map("customer_stats")
+}
+
+model SellerProfile {
+  id        String  @id @default(uuid())
+  userId    String  @unique
+  firstName String
+  lastName  String
+  phone     String?
+  avatar    String?
+  bio       String?
+
+  // shopName      String        @unique
+  // shopEmail     String
+  // shopPhone     String
+  // shopAddresses ShopAddress[]
+
+  // stripeConnectId    String? @unique
+  // onboardingComplete Boolean @default(false)
+
+  // commissionRate Float @default(10.0)
+
+  // totalProducts Int   @default(0)
+  // salesCount    Int   @default(0)
+  // totalRevenue  Float @default(0)
+  // rating        Float @default(0)
+  // reviewCount   Int   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("seller_profiles")
+}
+
+// model ShopAddress {
+//   id         String @id @default(uuid())
+//   street     String
+//   city       String
+//   state      String
+//   postalCode String
+//   country    String
+
+//   lat Float?
+//   lng Float?
+
+//   isPrimary Boolean @default(false)
+
+//   sellerProfileId String
+//   sellerProfile   SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
+
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+
+//   @@index([sellerProfileId])
+//   @@index([sellerProfileId, isPrimary])
+//   @@index([city])
+//   @@index([country])
+//   @@map("shop_addresses")
+// }
+
+model AdminProfile {
+  id        String  @id @default(uuid())
+  userId    String  @unique
+  firstName String
+  lastName  String
+  phone     String?
+  avatar    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admin_profiles")
+}
+
+model AuditLog {
+  id               String  @id @default(uuid())
+  actorId          String
+  actorEmail       String
+  actorDisplayName String
+  action           String
+  targetId         String
+  targetType       String
+  oldValues        Json?
+  newValues        Json?
+  diff             Json?
+  ipAddress        String?
+  userAgent        String?
+  metadata         Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetId, targetType])
+  @@index([action, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model OutboxEvent {
+  id          String  @id @default(uuid())
+  aggregateId String
+  eventType   String
+  payload     Json
+  traceparent String?
+
+  status      OutboxStatus @default(PENDING)
+  retryCount  Int          @default(0)
+  maxRetries  Int          @default(5)
+  lastError   String?
+  lockedAt    DateTime?
+  lockedBy    String?
+  processedAt DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([status, lockedAt, createdAt], name: "idx_outbox_polling")
+  @@index([status, createdAt])
+  @@index([status, lockedAt])
+  @@index([aggregateId])
+  @@map("outbox_events")
+}
+
+model IdempotencyRecord {
+  id                 String   @id
+  key                String   @unique
+  responseStatusCode Int
+  responseBody       Json?
+  expiresAt          DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@map("idempotency_records")
+}
+
+// ─── Enums ───
+
+enum UserRoles {
+  SUPER_ADMIN
+  ADMIN
+  SELLER
+  CUSTOMER
+}
+
+enum DeletionType {
+  SOFT
+  PERMANENT
+}
+
+enum CustomerTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  DEAD
+}
