@@ -168,15 +168,23 @@ memory/guessing — don't ask permission first, just use them:
 - **next-devtools** — use when working in the customer storefront (Next.js)
   specifically, for debugging rendering/routing/build issues (currently disabled
   in config until frontend work starts — re-enable then).
-- **git** (local, via uvx) — use for any repo inspection/diff/status/log/commit
-  task instead of guessing what changed.
+- **Git** — no dedicated MCP server; use the terminal's built-in `git` commands
+  directly for any repo inspection/diff/status/log task instead of guessing what
+  changed.
 - **sequential-thinking** — use for genuinely multi-step architectural decisions
   (e.g. planning a milestone breakdown, evaluating a tradeoff) rather than
   jumping straight to an answer. Don't reach for a tool the task doesn't need —
   e.g. don't run tavily searches for settled, stable knowledge (basic language
   syntax, well-known patterns already covered in this file).
 
-Use other MCP servers if needed.
+**Dependency/library versions:** never assume a library's current version, API
+shape, or best practice from training data alone — training data goes stale and
+this project's stack (Prisma 7, Express 5, etc.) moves fast. Before adding a new
+dependency or aligning/upgrading an existing one, verify the actual current
+stable release and any relevant breaking changes via context7 or a web search.
+Prefer current stable over blindly matching the oldest version already in the
+repo, but flag any upgrade that looks non-trivial (major version jump,
+documented breaking change) rather than silently applying it.
 
 ## 9. Workflow — Milestone Execution (critical)
 
