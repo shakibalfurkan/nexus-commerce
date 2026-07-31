@@ -1,0 +1,241 @@
+# Nexus — Agent Operating Rules
+
+Former name: ClassyShop — deprecated, do not use in new code/docs/commits/logs.
+
+## 1. Identity & Prime Directive
+
+Nexus is a real multi-vendor e-commerce platform (5-6 services today, growing
+past 10), not a demo. Operate at senior/staff-engineer PR-review rigor: correct,
+secure, observable, reversible, maintainable — in that priority order. If a
+request conflicts with security, data integrity, or production safety: state the
+risk, propose a safer alternative, and wait for approval before proceeding.
+Silent compliance with a bad idea is a failure, not helpfulness.
+
+## 1.5. Core Execution Principles (apply to every task, gates everything below)
+
+1. **Think Before Coding** — don't silently pick an interpretation when a
+   request is ambiguous. State your assumption out loud, or ask one focused
+   question if the ambiguity is High/Critical risk (see Section 3). If a simpler
+   approach exists than the one implied, say so before building the complicated
+   one.
+2. **Simplicity First** — write the minimum code that solves the actual problem.
+   No speculative abstractions, no "might need this later" scaffolding. If you
+   notice yourself building something a senior reviewer would call
+   overcomplicated, stop and simplify.
+3. **Surgical Changes** — only touch what the task requires. Don't "clean up" or
+   restructure adjacent code, comments, or files while working on something
+   else, even if you spot something questionable — flag it separately instead.
+4. **Goal-Driven Execution** — turn vague asks into verifiable goals before
+   starting. "Fix the bug" → write a failing test that reproduces it, then make
+   it pass. "Add validation" → write the test cases first, then implement until
+   they pass. State the success criteria up front, then verify against it before
+   calling the task done.
+
+## 2. Project Shape
+
+- 3 frontends: customer storefront (Next.js, SEO/perf-critical), seller
+  dashboard (React, client-heavy), admin dashboard (React, client-heavy).
+- Backend: Node/TypeScript microservices (auth, user, notification, gateway,
+  shop, more coming).
+- Monorepo (Turborepo): `apps/`, `services/`, `packages/`, `infrastructure/`,
+  `docs/adr/`. Migrating incrementally from polyrepo — duplicated deps still
+  exist, extract shared packages one at a time, never mixed with feature work.
+- Infra constraint: **free-tier only, no card on file.** Everything env-var
+  driven, cloud-managed (Neon/Aiven Postgres, Aiven Kafka — 5 topic limit, be
+  deliberate — Upstash Redis shared instance, Resend for email, Render for
+  hosting).
+
+## 3. Risk-Proportional Rigor
+
+Scale effort to risk, but never skip safety on high-risk items:
+
+- **Low** (typo, copy tweak): fix directly, minimal ceremony.
+- **Medium** (new component, non-critical endpoint): normal care, brief plan if
+  non-trivial.
+- **High** (new API, schema change, event contract change, shared package edit):
+  full checklist below, list affected boundaries
+  (service/DB/API/event/security/frontend).
+- **Critical** (auth, money, production data, destructive command): full
+  checklist + explicit approval required before executing.
+
+Before non-trivial code: read existing files first, don't assume from memory,
+check for existing shared utilities before writing new ones, state a short plan
+for anything High/Critical.
+
+## 4. Architecture Boundaries (non-negotiable)
+
+- No service reads another service's database directly. Cross-service = API
+  calls or Kafka events only.
+- Each service owns its own Prisma schema. **user-service is the single source
+  of truth** for business-level user state; auth-service holds a read-only
+  replica via Kafka outbox.
+- Shared packages (`packages/event-contracts`, `shared-enums`, etc.) only when
+  used by 2+ services or enforcing a real contract — not for one-off
+  convenience. State a one-line justification when adding one.
+- Clean layering inside services: domain logic must not import
+  Express/Prisma/Kafka/vendor SDKs directly — those go in an
+  infrastructure/adapter layer. Vendor SDKs (Resend, etc.) always sit behind an
+  interface so swapping providers touches one file.
+
+## 5. Security Checklist (apply to every endpoint/consumer)
+
+Validate all external input (HTTP body/query/params, Kafka payloads) with Zod at
+the boundary. Bcrypt for passwords, never logged/stored plaintext. Short-lived
+JWTs + refresh rotation. Rate-limit public auth/notification endpoints (Redis
+sliding window). Helmet + CORS locked to known origins in prod (no wildcard).
+Escape all template/HTML interpolation. No secrets in code, logs, commit
+history, or frontend bundles — env vars only, redacted from debug output. Every
+protected endpoint checks: authenticated → authorized → resource ownership
+(seller/customer isolation, no IDOR). Destructive ops (force-push, reset --hard,
+DROP/TRUNCATE, prod data mutation, Redis flush) require explicit approval every
+time — propose purpose + rollback plan first.
+
+## 6. Event-Driven Rules (Kafka)
+
+- At-least-once delivery — every consumer must be idempotent (dedup
+  table/idempotency key, e.g. `NotificationLog`).
+- Standard event envelope:
+
+```
+{ eventId, eventType: "domain.aggregate.event.v1", eventVersion, occurredAt (UTC ISO), producer,
+  correlationId, causationId, traceparent, payload }
+```
+
+- Failures: exponential backoff + jitter, max 3 attempts, circuit breaker on
+  external HTTP deps, DLQ after retry exhaustion — never infinite retry, never
+  silent drop.
+- Writing to DB + publishing an event together → transactional outbox, never
+  "write DB then hope Kafka publish succeeds."
+- Redis keys strictly namespaced per service: `<service>:<purpose>:<identifier>`
+  (e.g. `notification:ratelimit:email:{recipientHash}`). Never generic keys like
+  `cache` or `lock`. Always set TTL.
+- You have 5 Kafka topics max (Aiven free tier) — don't propose a new topic
+  without discussing quota impact.
+
+## 7. Code Quality
+
+TypeScript strict everywhere, no bare `any` (comment if unavoidable), no
+`console.log` in prod code (use Winston/shared logger), no empty catch blocks,
+no dead commented-out code. Small single-responsibility functions. Registry/map
+pattern over scattered conditionals for things like template/provider selection.
+Structured JSON logs with `requestId`/`correlationId`/`traceId`; never log
+secrets, tokens, or full PII.
+
+## 8. Frontend Rules
+
+- Every screen handles loading / empty / error / success states — no exceptions.
+  **Loading state = skeleton screens matching the actual content layout (shape,
+  count, approximate size of what's loading), never a generic spinner.**
+  Spinners are only acceptable for short, non-content actions (e.g. a button's
+  own submit state), not for page/section content loads.
+- Customer storefront: award-site visual bar, SSR/server components by default,
+  client components only where interactivity requires it, strong Core Web
+  Vitals, semantic HTML, real accessibility (WCAG 2.2 AA target).
+- Seller/admin dashboards: client-heavy is fine and intentional — but still
+  separate data-fetching from presentation (typed API client + React Query
+  pattern, not fetch calls buried in JSX). Seller data isolation enforced
+  server-side, never just hidden in UI.
+- **UI components (shadcn/ui):** install and maintain in `packages/ui` only —
+  never reinstall shadcn per-app or per-service. Each frontend app imports
+  shared components from `packages/ui`. Backend services never touch this
+  package; it's frontend-only.
+- **Animation:** use Motion (formerly Framer Motion) as the default for all
+  component-level animation across all three frontends — hover/tap states,
+  layout transitions, modals, list reordering, page transitions. Reserve GSAP +
+  ScrollTrigger specifically for the customer storefront's high-impact
+  marketing/landing moments (hero sections, scroll-driven reveals) where
+  award-site-level polish matters — do not use GSAP on the seller/admin
+  dashboards, where scroll-jacking or heavy motion works against usability in a
+  data-dense internal tool. Respect `prefers-reduced-motion` in both cases.
+- Shared UI primitives go in `packages/ui` only once used by 2+ apps — don't
+  centralize prematurely.
+
+## 8.5. MCP Tool Usage
+
+Use available MCP servers proactively when they'd give a better answer than
+memory/guessing — don't ask permission first, just use them:
+
+- **context7** — always check before writing code against any library/framework
+  API (Prisma, Kafka, Next.js, Express, Resend, etc.) to confirm current
+  syntax/APIs rather than relying on possibly-outdated training knowledge,
+  especially since versions here move fast (Prisma 7, Express 5).
+- **shadcn** — always check before writing code to check updated version of
+  shadcnUI for better result. Don't assume anything and don't wright old
+  versions code.
+- **tavily** — use for anything time-sensitive or outside library docs: current
+  best practices, recent breaking changes, comparing approaches, checking if a
+  package/service is still maintained.
+- **next-devtools** — use when working in the customer storefront (Next.js)
+  specifically, for debugging rendering/routing/build issues (currently disabled
+  in config until frontend work starts — re-enable then).
+- **git** (local, via uvx) — use for any repo inspection/diff/status/log/commit
+  task instead of guessing what changed.
+- **sequential-thinking** — use for genuinely multi-step architectural decisions
+  (e.g. planning a milestone breakdown, evaluating a tradeoff) rather than
+  jumping straight to an answer. Don't reach for a tool the task doesn't need —
+  e.g. don't run tavily searches for settled, stable knowledge (basic language
+  syntax, well-known patterns already covered in this file).
+
+Use other MCP servers if needed.
+
+## 9. Workflow — Milestone Execution (critical)
+
+For any new service/feature/refactor: work **one milestone at a time**. Never
+generate a whole feature/service in one shot unless explicitly told to. At the
+end of each milestone provide: complete code for that milestone, brief
+verification steps, a Conventional Commits message, and then **stop and ask for
+explicit approval** before continuing. Example:
+
+```
+Milestone 2 complete — EmailProvider interface + Resend adapter.
+Proposed commit: feat(notification): add resend email provider abstraction
+Approve proceeding to Milestone 3?
+```
+
+Ask one focused clarifying question only for High/Critical ambiguity (data
+ownership, breaking API/event changes, security model) — not for anything
+already settled in this file. For reversible/low-risk ambiguity, state your
+assumption and proceed.
+
+## 10. Git & Commits
+
+Conventional Commits: `feat|fix|chore|refactor|docs|test|perf|security|revert`
+with a service/area scope, e.g.
+`feat(notification): implement redis sliding-window rate limiter`. Non-trivial
+PRs get a one-line risk note and rollback plan for schema/contract changes. Log
+architecture-affecting decisions (service boundaries, data ownership, vendor
+choice) as a short ADR in `docs/adr/`.
+
+## 11. Money & Compliance (lightweight placeholder — expand when payment-service exists)
+
+If/when payments are introduced: integer minor units for amounts, never floats,
+explicit currency code, immutable ledger entries, idempotent financial
+mutations, verified provider webhook signatures, never store raw card data. Flag
+(don't self-answer) anything that looks like it needs legal/compliance review.
+
+## 12. Hard Forbidden (no exceptions without explicit approval)
+
+Cross-service DB access · shared mutable global state · silent error swallowing
+· secrets in code/logs/commits/bundles · wildcard CORS in prod · disabled
+auth/rate-limits · infinite retries · non-idempotent financial or
+Kafka-triggered mutations · missing DLQ on async failure paths · raw user HTML
+without escaping · destructive DB/git commands without approval · adding
+dependencies without a one-line justification · refactoring unrelated code
+silently.
+
+## 13. Definition of Done
+
+Type-safe, lint-clean, tests added for non-trivial/critical logic, errors
+handled, secrets/PII not leaked, docs/`.env.example`/API-event contracts updated
+if changed, commit message provided, risk stated for High/Critical changes, no
+unstated shortcuts.
+
+## 14. Persistent Facts
+
+Project = Nexus (never ClassyShop). 3 frontends (Next.js customer, React seller,
+React admin — dashboards intentionally client-heavy). No local Docker infra
+assumed — cloud free-tier only. Kafka = at-least-once, consumers must be
+idempotent. Redis shared, strict namespacing mandatory. Milestone-by-milestone
+execution is mandatory for non-trivial work. If a future instruction conflicts
+with these rules, flag the conflict and ask which should take precedence rather
+than silently picking one.

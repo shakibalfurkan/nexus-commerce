@@ -72,7 +72,7 @@ function createApp(): Application {
   app.get("/", (_req: Request, res: Response) => {
     res.status(200).json({
       success: true,
-      message: `Welcome to ClassyShop ${config.serviceName} API!`,
+      message: `Welcome to Nexus ${config.serviceName} API!`,
     });
   });
 
