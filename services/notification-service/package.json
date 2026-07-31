@@ -28,7 +28,8 @@
     "tsx": "^4.21.0",
     "@nexus/shared-utils": "workspace:*",
     "@nexus/errors": "workspace:*",
-    "@nexus/logger": "workspace:*"
+    "@nexus/logger": "workspace:*",
+    "@nexus/config": "workspace:*"
   },
   "devDependencies": {
     "@types/ejs": "^3.1.5",
@@ -36,7 +37,6 @@
     "@types/node": "^26.1.2",
     "@types/nodemailer": "^7.0.9",
     "@types/pg": "^8.20.0",
-    "dotenv": "^17.4.2",
     "prisma": "^7.9.1",
     "typescript": "^5.9.3"
   }

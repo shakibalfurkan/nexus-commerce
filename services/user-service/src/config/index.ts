@@ -1,22 +1,7 @@
-import dotenv from "dotenv";
-import path from "path";
+import { loadEnv, requireEnv, optionalEnv } from "@nexus/config";
 
-dotenv.config({ path: path.join(process.cwd(), ".env") });
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `[CONFIG] Missing required environment variable: ${name}. ` +
-        `The service cannot start without this value.`,
-    );
-  }
-  return value;
-}
-
-function optionalEnv(name: string, defaultValue: string): string {
-  return process.env[name] ?? defaultValue;
-}
+// Load and validate immediately — fail fast before any other module loads
+loadEnv();
 
 export default {
   node_env: optionalEnv("NODE_ENV", "development"),

@@ -21,7 +21,6 @@
     "@types/morgan": "^1.9.10",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
@@ -33,7 +32,8 @@
     "tsx": "^4.21.0",
     "@nexus/shared-utils": "workspace:*",
     "@nexus/errors": "workspace:*",
-    "@nexus/logger": "workspace:*"
+    "@nexus/logger": "workspace:*",
+    "@nexus/config": "workspace:*"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",

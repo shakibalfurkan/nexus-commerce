@@ -1,7 +1,6 @@
-import dotenv from "dotenv";
-import path from "path";
+import { loadEnv, optionalEnv } from "@nexus/config";
 
-dotenv.config({ path: path.join(process.cwd(), ".env") });
+loadEnv();
 
 export default {
   node_env: process.env.NODE_ENV,
