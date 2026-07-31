@@ -29,7 +29,7 @@ export const setupSecurityMiddleware = (app: Application): void => {
   );
 
   app.use((_req, res, next) => {
-    res.setHeader("X-Gateway", "ClassyShop-API-Gateway");
+    res.setHeader("X-Gateway", "Nexus-API-Gateway");
 
     if (config.node_env === "production") {
       res.setHeader(

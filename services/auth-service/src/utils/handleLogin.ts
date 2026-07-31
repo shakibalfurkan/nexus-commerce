@@ -1,4 +1,4 @@
-import { UnauthorizedError } from "../errors/AppError.js";
+import { UnauthorizedError } from "@nexus/errors";
 import { prisma } from "../lib/prisma.js";
 
 const MAX_LOGIN_ATTEMPTS = 5;

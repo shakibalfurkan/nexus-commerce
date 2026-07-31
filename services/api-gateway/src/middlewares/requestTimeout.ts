@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { GatewayTimeoutError } from "../errors/AppError.js";
+import { GatewayTimeoutError } from "@nexus/errors";
 import { logger } from "../utils/logger.js";
 
 interface RequestTimeoutOptions {

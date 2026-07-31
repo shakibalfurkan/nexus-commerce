@@ -1,6 +1,6 @@
 import type { ICustomerRegisterRequestDTO } from "./customer.interface.js";
 import * as IdentityRepository from "../identity/identity.repository.js";
-import { BadRequestError } from "../../errors/AppError.js";
+import { BadRequestError } from "@nexus/errors";
 import checkOtpRestrictions from "../../utils/otp/checkOtpRestrictions.js";
 import {
   createEventMetadata,

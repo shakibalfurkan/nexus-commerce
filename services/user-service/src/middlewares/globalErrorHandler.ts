@@ -6,7 +6,7 @@ import type { TErrorResponse, TErrorSource } from "../types/error.types.js";
 import config from "../config/index.js";
 import { Prisma } from "../generated/prisma/client.js";
 import handleZodError from "../errors/handleZodError.js";
-import { AppError } from "../errors/AppError.js";
+import { AppError } from "@nexus/errors";
 import logger from "../utils/logger.js";
 
 const globalErrorHandler: ErrorRequestHandler = (

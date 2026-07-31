@@ -1,23 +1,19 @@
 {
-  "name": "@nexus/shared-utils",
+  "name": "@nexus/errors",
   "version": "0.0.0",
-  "description": "",
+  "description": "Shared error classes for Nexus services",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./*": "./src/*.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "eslint . --max-warnings 0",
     "build": "tsc",
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
-    "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "^22.15.3",
-    "eslint": "^9.39.1",
-    "typescript": "5.9.2"
+    "@types/node": "^26.1.2",
+    "typescript": "^5.9.3"
   },
   "dependencies": {},
   "keywords": [],

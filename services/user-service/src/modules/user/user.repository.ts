@@ -122,23 +122,6 @@ export async function findUserByEmail(
   );
 }
 
-export async function findUserByEmailBlindIndex(
-  email: string,
-): Promise<UserResponseDTO | null> {
-  const { computeEmailBlindIndex } = await import("../../crypto/blindIndex.js");
-  const blindIndex = computeEmailBlindIndex(email);
-
-  const user = await prisma.user.findUnique({
-    where: {
-      emailBlindIndex: blindIndex,
-      ...activeUserFilter,
-    },
-    include: userProfileIncludes,
-  });
-
-  return user ? toUserResponseDTO(user) : null;
-}
-
 export async function existsByEmailIncludingDeleted(
   email: string,
 ): Promise<boolean> {

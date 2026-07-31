@@ -14,13 +14,10 @@ export class AppError extends Error {
 
     this.statusCode = statusCode;
     this.isOperational = isOperational;
-
     this.field = field;
-
     this.timestamp = new Date().toISOString();
 
     Error.captureStackTrace(this, this.constructor);
-
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
@@ -67,6 +64,13 @@ export class ValidationError extends AppError {
   }
 }
 
+export class CircuitBreakerError extends AppError {
+  constructor(message: string) {
+    super(500, message, false);
+    this.name = "CircuitBreakerError";
+  }
+}
+
 export class InternalServerError extends AppError {
   constructor(message = "Internal server error", field?: string) {
     super(500, message, false, field);
@@ -78,5 +82,19 @@ export class ServiceUnavailableError extends AppError {
   constructor(message = "Service temporarily unavailable", field?: string) {
     super(503, message, true, field);
     this.name = "ServiceUnavailableError";
+  }
+}
+
+export class TooManyRequestsError extends AppError {
+  constructor(message = "Too many requests", field?: string) {
+    super(429, message, true, field);
+    this.name = "TooManyRequestsError";
+  }
+}
+
+export class GatewayTimeoutError extends AppError {
+  constructor(message = "Gateway timeout", field?: string) {
+    super(504, message, true, field);
+    this.name = "GatewayTimeoutError";
   }
 }

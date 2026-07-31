@@ -4,7 +4,7 @@ import type { TErrorResponse, TErrorSource } from "../types/error.types.js";
 import { logger } from "../utils/logger.js";
 import config from "../config/index.js";
 
-import { AppError } from "../errors/AppError.js";
+import { AppError } from "@nexus/errors";
 
 const globalErrorHandler: ErrorRequestHandler = (
   err,

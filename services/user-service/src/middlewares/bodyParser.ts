@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import catchAsync from "../utils/catchAsync.js";
-import { BadRequestError } from "../errors/AppError.js";
+import { BadRequestError } from "@nexus/errors";
 
 export const parseBody = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {

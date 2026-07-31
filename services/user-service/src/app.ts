@@ -12,7 +12,7 @@ import globalErrorHandler from "./middlewares/globalErrorHandler.js";
 import notFoundHandler from "./middlewares/notFound.js";
 import helmet from "helmet";
 import morgan from "morgan";
-import formatUptime from "./utils/formatUptime.js";
+import { formatUptime } from "@nexus/shared-utils";
 
 import { morganStream } from "./utils/logger.js";
 import globalRouter from "./routes/index.js";
@@ -72,7 +72,7 @@ export function createApp(): Application {
   app.get("/", (_req: Request, res: Response) => {
     res.status(200).json({
       success: true,
-      message: `Welcome to the ClassyShop ${config.serviceName} API!`,
+      message: `Welcome to the Nexus ${config.serviceName} API!`,
     });
   });
 

@@ -25,7 +25,7 @@ async function main() {
 
     server.listen(config.port, () => {
       logger.info(
-        `ClassyShop ${config.serviceName} is running on port ${config.port}`,
+        `Nexus ${config.serviceName} is running on port ${config.port}`,
       );
     });
   } catch (err) {

@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, AxiosError } from "axios";
 import config from "../../config/index.js";
 import logger from "../../utils/logger.js";
-import { ServiceUnavailableError } from "../../errors/AppError.js";
+import { ServiceUnavailableError } from "@nexus/errors";
 import { CircuitBreaker } from "../../cache/circuitBreaker.js";
 
 declare module "axios" {

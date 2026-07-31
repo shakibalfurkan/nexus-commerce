@@ -9,7 +9,7 @@ import { ServerResponse } from "http";
 import type { Socket } from "net";
 import config from "../config/index.js";
 import { logger } from "../utils/logger.js";
-import { ServiceUnavailableError } from "../errors/AppError.js";
+import { ServiceUnavailableError } from "@nexus/errors";
 
 const buildProxy = (serviceUrl: string): RequestHandler =>
   createProxyMiddleware({

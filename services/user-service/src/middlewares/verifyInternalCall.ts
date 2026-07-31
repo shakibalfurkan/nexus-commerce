@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
-import { UnauthorizedError } from "../errors/AppError.js";
+import { UnauthorizedError } from "@nexus/errors";
 import config from "../config/index.js";
 
 const verifyInternalCall = async (

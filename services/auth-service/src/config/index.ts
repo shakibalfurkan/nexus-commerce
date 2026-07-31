@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import path from "path";
-import { AppError } from "../errors/AppError.js";
+import { AppError } from "@nexus/errors";
 
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 

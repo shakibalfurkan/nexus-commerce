@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import catchAsync from "../utils/catchAsync.js";
 import type { UserRoles } from "../generated/prisma/enums.js";
-import { UnauthorizedError } from "../errors/AppError.js";
+import { UnauthorizedError } from "@nexus/errors";
 import type { JwtPayload } from "jsonwebtoken";
 import config from "../config/index.js";
 import verifyToken from "../utils/token/verifyToken.js";

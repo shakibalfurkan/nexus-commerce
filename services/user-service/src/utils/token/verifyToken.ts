@@ -4,7 +4,7 @@ import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
-} from "../../errors/AppError.js";
+} from "@nexus/errors";
 
 export interface IDecodedToken extends ITokenPayload, JwtPayload {
   iat: number;

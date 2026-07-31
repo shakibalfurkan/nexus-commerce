@@ -2,7 +2,7 @@ import rateLimit from "express-rate-limit";
 import { RedisStore, type RedisReply } from "rate-limit-redis";
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "../utils/logger.js";
-import { TooManyRequestsError } from "../errors/AppError.js";
+import { TooManyRequestsError } from "@nexus/errors";
 import { redisClient } from "../config/redis.js";
 import config from "../config/index.js";
 

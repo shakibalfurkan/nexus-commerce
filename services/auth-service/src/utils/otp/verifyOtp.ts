@@ -1,5 +1,5 @@
 import { redisClient } from "../../config/redis.js";
-import { BadRequestError } from "../../errors/AppError.js";
+import { BadRequestError } from "@nexus/errors";
 import { OtpPurpose, type TOtpPurpose } from "../../events/eventTypes.js";
 
 const MAX_ATTEMPTS = 3;

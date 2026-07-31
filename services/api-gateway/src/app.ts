@@ -18,7 +18,7 @@ import { corsMiddleware } from "./middlewares/cors.js";
 import { globalLimiter } from "./middlewares/rateLimiter.js";
 import { registerProxies } from "./middlewares/proxy.js";
 import { requestTimeout } from "./middlewares/requestTimeout.js";
-import formatUptime from "./utils/formatUptime.js";
+import { formatUptime } from "@nexus/shared-utils";
 
 function createApp(): Application {
   const app: Application = express();

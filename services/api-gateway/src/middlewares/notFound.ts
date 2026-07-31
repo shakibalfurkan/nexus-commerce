@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { NotFoundError } from "../errors/AppError.js";
+import { NotFoundError } from "@nexus/errors";
 import logger from "../utils/logger.js";
 
 export const notFoundHandler = (

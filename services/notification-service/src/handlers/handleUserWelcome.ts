@@ -7,7 +7,7 @@ export const handleUserWelcome = async (payload: {
 }) => {
   const { userName, email } = payload;
 
-  await sendEmail(email, "Welcome to ClassyShop!", "welcome", {
+  await sendEmail(email, "Welcome to Nexus!", "welcome", {
     userName,
   });
 

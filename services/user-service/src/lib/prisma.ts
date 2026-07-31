@@ -2,7 +2,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../src/generated/prisma/client.js";
 import logger from "../utils/logger.js";
-import { InternalServerError } from "../errors/AppError.js";
+import { InternalServerError } from "@nexus/errors";
 
 const connectionString = `${process.env.DATABASE_URL}`;
 

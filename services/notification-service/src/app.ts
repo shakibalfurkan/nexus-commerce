@@ -9,7 +9,7 @@ import globalErrorHandler from "./middlewares/globalErrorHandler.js";
 import notFoundHandler from "./middlewares/notFound.js";
 import helmet from "helmet";
 
-import formatUptime from "./utils/formatUptime.js";
+import { formatUptime } from "@nexus/shared-utils";
 
 function createApp(): Application {
   const app: Application = express();
@@ -23,7 +23,7 @@ function createApp(): Application {
   app.get("/", (_req: Request, res: Response) => {
     res.status(200).json({
       success: true,
-      message: `Welcome to the ClassyShop ${config.serviceName} API!`,
+      message: `Welcome to the Nexus ${config.serviceName} API!`,
     });
   });
 

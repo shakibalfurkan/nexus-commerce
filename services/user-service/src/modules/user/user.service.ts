@@ -1,13 +1,8 @@
 import { prisma } from "../../lib/prisma.js";
-import { BadRequestError, ConflictError } from "../../errors/AppError.js";
+import { BadRequestError, ConflictError } from "@nexus/errors";
 import { UserRoles } from "../../generated/prisma/enums.js";
 import type { CreateUserProfileDTO, UserResponseDTO } from "./user.dto.js";
 import * as UserRepository from "./user.repository.js";
-import {
-  initializeUserEncryption,
-  destroyUserEncryptionKey,
-  hasActiveEncryptionKey,
-} from "../../crypto/keyManager.js";
 import {
   emitDomainEvent,
   emitNotificationEvent,
@@ -138,7 +133,7 @@ export async function getUserById(id: string): Promise<UserResponseDTO | null> {
 export async function getUserByEmail(
   email: string,
 ): Promise<UserResponseDTO | null> {
-  const user = await UserRepository.findUserByEmailBlindIndex(email);
+  const user = await UserRepository.findUserByEmail(email);
 
   if (!user) {
     return null;

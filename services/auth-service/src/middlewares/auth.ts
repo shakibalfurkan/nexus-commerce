@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import config from "../config/index.js";
-import { UnauthorizedError } from "../errors/AppError.js";
+import { UnauthorizedError } from "@nexus/errors";
 import verifyToken, { type IDecodedToken } from "../utils/token/verifyToken.js";
 import type { JwtPayload } from "jsonwebtoken";
 

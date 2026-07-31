@@ -1,4 +1,4 @@
-import { CircuitBreakerError } from "../errors/AppError.js";
+import { CircuitBreakerError } from "@nexus/errors";
 import logger from "../utils/logger.js";
 
 // ─── Types ───

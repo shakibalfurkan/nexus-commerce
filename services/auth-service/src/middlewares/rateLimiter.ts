@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { redisClient } from "../config/redis.js";
-import { AppError } from "../errors/AppError.js";
+import { AppError } from "@nexus/errors";
 import logger from "../utils/logger.js";
 
 interface RateLimiterOptions {

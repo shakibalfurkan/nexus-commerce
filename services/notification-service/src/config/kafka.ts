@@ -1,7 +1,7 @@
 import { Kafka, type SASLOptions } from "kafkajs";
 import config from "./index.js";
 import logger from "../utils/logger.js";
-import { InternalServerError } from "../errors/AppError.js";
+import { InternalServerError } from "@nexus/errors";
 
 const { broker, username, password } = config.kafka;
 if (!broker || !username || !password) {

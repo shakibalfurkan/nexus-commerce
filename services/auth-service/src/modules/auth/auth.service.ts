@@ -7,7 +7,7 @@ import {
   UnauthorizedError,
   ForbiddenError,
   ConflictError,
-} from "../../errors/AppError.js";
+} from "@nexus/errors";
 import { prisma } from "../../lib/prisma.js";
 import {
   hashPassword,

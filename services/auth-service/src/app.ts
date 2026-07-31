@@ -13,7 +13,7 @@ import notFoundHandler from "./middlewares/notFound.js";
 import helmet from "helmet";
 import morgan from "morgan";
 import { morganStream } from "./utils/logger.js";
-import formatUptime from "./utils/formatUptime.js";
+import { formatUptime } from "@nexus/shared-utils";
 import globalRouter from "./routes/index.js";
 import { requestIdMiddleware } from "./middlewares/requestId.js";
 import { sanitizationMiddleware } from "./middlewares/sanitize.js";
@@ -70,7 +70,7 @@ export function createApp(): Application {
   app.get("/", (_req: Request, res: Response) => {
     res.status(200).json({
       success: true,
-      message: `Welcome to ClassyShop ${config.serviceName} API!`,
+      message: `Welcome to Nexus ${config.serviceName} API!`,
     });
   });
 
