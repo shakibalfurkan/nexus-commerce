@@ -31,10 +31,9 @@
     "morgan": "^1.10.1",
     "rate-limit-redis": "^5.0.0",
     "tsx": "^4.21.0",
-    "winston": "^3.19.0",
-    "winston-daily-rotate-file": "^5.0.0",
     "@nexus/shared-utils": "workspace:*",
-    "@nexus/errors": "workspace:*"
+    "@nexus/errors": "workspace:*",
+    "@nexus/logger": "workspace:*"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",

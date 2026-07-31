@@ -10,7 +10,7 @@ import compression from "compression";
 import { setupSecurityMiddleware } from "./middlewares/security.js";
 import { requestIdMiddleware } from "./middlewares/requestId.js";
 import config from "./config/index.js";
-import { morganStream } from "./utils/logger.js";
+import { createLogger, createMorganStream } from "@nexus/logger";
 import { circuitBreakerMiddleware } from "./middlewares/circuitBreaker.js";
 import notFoundHandler from "./middlewares/notFound.js";
 import globalErrorHandler from "./middlewares/globalErrorHandler.js";
@@ -21,6 +21,12 @@ import { requestTimeout } from "./middlewares/requestTimeout.js";
 import { formatUptime } from "@nexus/shared-utils";
 
 function createApp(): Application {
+  const logger = createLogger({
+    serviceName: config.serviceName,
+    node_env: config.node_env,
+  });
+  const morganStream = createMorganStream(logger);
+
   const app: Application = express();
   app.set("trust proxy", 1);
 

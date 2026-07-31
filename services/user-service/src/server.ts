@@ -1,15 +1,20 @@
 import { createServer, type Server } from "http";
 import { createApp } from "./app.js";
 import config from "./config/index.js";
-import logger from "./utils/logger.js";
-import { disconnectPrisma, prisma } from "./lib/prisma.js";
 import { redisClient } from "./config/redis.js";
 import { producer } from "./config/kafka.js";
+import { disconnectPrisma, prisma } from "./lib/prisma.js";
+import { createLogger } from "@nexus/logger";
 import { startOutboxPoller, stopOutboxPoller } from "./events/outboxPoller.js";
 
 let server: Server;
 
 async function main(): Promise<void> {
+  const logger = createLogger({
+    serviceName: config.serviceName,
+    node_env: config.node_env,
+  });
+
   try {
     // Create app
     const app = createApp();

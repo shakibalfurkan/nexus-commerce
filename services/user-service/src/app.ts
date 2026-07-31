@@ -14,12 +14,18 @@ import helmet from "helmet";
 import morgan from "morgan";
 import { formatUptime } from "@nexus/shared-utils";
 
-import { morganStream } from "./utils/logger.js";
+import { createLogger, createMorganStream } from "@nexus/logger";
 import globalRouter from "./routes/index.js";
 import { requestIdMiddleware } from "./middlewares/requestId.js";
 import { sanitizationMiddleware } from "./middlewares/sanitize.js";
 
 export function createApp(): Application {
+  const logger = createLogger({
+    serviceName: config.serviceName,
+    node_env: config.node_env,
+  });
+  const morganStream = createMorganStream(logger);
+
   const app: Application = express();
 
   // Middleware setup
