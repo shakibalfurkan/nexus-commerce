@@ -1,5 +1,12 @@
-import { Kafka, type KafkaConfig, type SASLOptions } from "kafkajs";
+import {
+  Kafka,
+  type KafkaConfig,
+  type SASLOptions,
+  type Producer,
+} from "kafkajs";
 import { createLogger } from "@nexus/logger";
+
+export type { Kafka, Producer };
 
 // ─── Types ───
 

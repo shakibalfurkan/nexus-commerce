@@ -7,6 +7,12 @@ let isProducerConnected = false;
 export const EventBus = {
   publish: async (topic: KafkaTopics, message: any) => {
     try {
+      if (!producer) {
+        throw new Error(
+          "Kafka producer is not initialized (credentials missing)",
+        );
+      }
+
       if (!isProducerConnected) {
         await producer.connect();
         isProducerConnected = true;
@@ -27,6 +33,10 @@ export const EventBus = {
     groupId: string,
     handler: (data: any) => Promise<void>,
   ) => {
+    if (!kafka) {
+      throw new Error("Kafka client is not initialized (credentials missing)");
+    }
+
     const consumer = kafka.consumer({
       groupId,
       sessionTimeout: 30000,

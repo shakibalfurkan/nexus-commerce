@@ -1,16 +1,11 @@
 import createApp from "./app.js";
 import config from "./config/index.js";
 import { startKafkaConsumer } from "./events/kafka-consumer.js";
-import { createLogger } from "@nexus/logger";
+import logger from "./utils/logger.js";
 
-const port = process.env.PORT || config.port;
+const port = process.env.PORT || config.port || "3000";
 
 async function main(): Promise<void> {
-  const logger = createLogger({
-    serviceName: config.serviceName,
-    node_env: config.node_env,
-  });
-
   try {
     // Create app
     const app = createApp();

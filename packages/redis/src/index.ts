@@ -1,6 +1,8 @@
 import { Redis } from "ioredis";
 import { createLogger } from "@nexus/logger";
 
+export type { Redis } from "ioredis";
+
 export interface RedisClientOptions {
   url: string;
   serviceName: string;

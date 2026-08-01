@@ -1,10 +1,17 @@
 import jwt, { type JwtPayload } from "jsonwebtoken";
-import type { ITokenPayload } from "./generateToken.js";
+import { UserRoles } from "../../generated/prisma/enums.js";
 import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
 } from "@nexus/errors";
+
+export interface ITokenPayload {
+  id: string;
+  role: UserRoles[];
+  email: string;
+  tokenType?: "access" | "refresh" | "reset";
+}
 
 export interface IDecodedToken extends ITokenPayload, JwtPayload {
   iat: number;

@@ -8,6 +8,8 @@ export interface IRegisterRequestDTO {
   role: "SELLER" | "CUSTOMER";
 }
 
+export type TRegisterRequest = IRegisterRequestDTO;
+
 export interface IVerifyRegistrationDTO {
   email: string;
   otp: string;

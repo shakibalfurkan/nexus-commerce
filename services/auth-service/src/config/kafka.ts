@@ -1,4 +1,4 @@
-import { createKafkaClient } from "@nexus/kafka";
+import { createKafkaClient, type Kafka, type Producer } from "@nexus/kafka";
 import config from "./index.js";
 
 const { broker, username, password } = config.kafka;
@@ -8,8 +8,8 @@ export const KafkaTopics = {
   DLQ: "dead-letter-queue",
 } as const;
 
-let kafka: ReturnType<typeof createKafkaClient> | null = null;
-let producer: ReturnType<typeof createKafkaClient>["producer"] | null = null;
+let kafka: Kafka | null = null;
+let producer: Producer | null = null;
 
 if (broker && username && password) {
   const client = createKafkaClient({

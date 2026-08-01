@@ -45,17 +45,9 @@ export async function createUserProfile(
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    const { encryptedEmail, emailBlindIndex } = await initializeUserEncryption(
-      payload.id,
-      payload.email,
-      tx,
-    );
-
-    const user = await UserRepository.createUserWithEncryption(
+    const user = await UserRepository.createUser(
       {
         ...payload,
-        encryptedEmail,
-        emailBlindIndex,
       },
       tx,
     );
@@ -173,11 +165,6 @@ export async function hardDeleteUser(
   }
 
   await prisma.$transaction(async (tx) => {
-    const hasKey = await hasActiveEncryptionKey(id);
-    if (hasKey) {
-      await destroyUserEncryptionKey(id, tx);
-    }
-
     await UserRepository.hardDeleteUser(id, tx);
 
     await UserRepository.writeAuditLog({

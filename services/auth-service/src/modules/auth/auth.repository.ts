@@ -1,5 +1,17 @@
 import { prisma } from "../../lib/prisma.js";
 
+export async function findByEmail(email: string) {
+  return prisma.credential.findUnique({
+    where: { email },
+  });
+}
+
+export async function findById(id: string) {
+  return prisma.credential.findUnique({
+    where: { id },
+  });
+}
+
 export async function updatePassword(id: string, hashedPassword: string) {
   return prisma.credential.update({
     where: { id },

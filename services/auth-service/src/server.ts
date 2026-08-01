@@ -4,17 +4,12 @@ import config from "./config/index.js";
 import { redisClient } from "./config/redis.js";
 import { producer } from "./config/kafka.js";
 import { disconnectPrisma, prisma } from "./lib/prisma.js";
-import { createLogger } from "@nexus/logger";
+import logger from "./utils/logger.js";
 import { startOutboxPoller } from "./events/outboxPoller.js";
 
 let server: Server;
 
 async function main(): Promise<void> {
-  const logger = createLogger({
-    serviceName: config.serviceName,
-    node_env: config.node_env,
-  });
-
   try {
     // Create app
     const app = createApp();

@@ -20,7 +20,11 @@ import checkOtpRestrictions from "../../utils/otp/checkOtpRestrictions.js";
 import trackOtpRequests from "../../utils/otp/trackOtpRequests.js";
 import { UserRoles } from "../../generated/prisma/enums.js";
 import createInternalSignature from "../../utils/createInternalSignature.js";
-import type { IAuthResult, ITokenRefreshResult } from "./auth.interface.js";
+import type {
+  IAuthResult,
+  ITokenRefreshResult,
+  TRegisterRequest,
+} from "./auth.interface.js";
 import { createUserProfile } from "../../lib/axiosClients/userServiceClient.js";
 import { buildJwtPayload } from "../../utils/token/buildJwtPayload.js";
 import {

@@ -2,16 +2,11 @@ import { createServer, type Server } from "http";
 import createApp from "./app.js";
 import config from "./config/index.js";
 import { redisClient } from "./config/redis.js";
-import { createLogger } from "@nexus/logger";
+import logger from "./utils/logger.js";
 
 let server: Server;
 
 async function main() {
-  const logger = createLogger({
-    serviceName: config.serviceName,
-    node_env: config.node_env,
-  });
-
   try {
     const app = createApp();
 
