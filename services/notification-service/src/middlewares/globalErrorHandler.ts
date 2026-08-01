@@ -3,7 +3,7 @@ import type { ErrorRequestHandler } from "express";
 // import { logger } from "../lib/logger.js";
 import config from "../config/index.js";
 import { AppError } from "@nexus/errors";
-import type { TErrorResponse, TErrorSource } from "../types/error.types.js";
+import type { TErrorResponse, TErrorSource } from "@nexus/shared-types";
 import logger from "../utils/logger.js";
 
 const globalErrorHandler: ErrorRequestHandler = (

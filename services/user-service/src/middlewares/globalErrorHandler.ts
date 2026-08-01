@@ -1,11 +1,11 @@
 import type { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
 
-import type { TErrorResponse, TErrorSource } from "../types/error.types.js";
+import type { TErrorResponse, TErrorSource } from "@nexus/shared-types";
 // import { logger } from "../lib/logger.js";
 import config from "../config/index.js";
 import { Prisma } from "../generated/prisma/client.js";
-import handleZodError from "../errors/handleZodError.js";
+import { handleZodError } from "@nexus/shared-types";
 import { AppError } from "@nexus/errors";
 import logger from "../utils/logger.js";
 

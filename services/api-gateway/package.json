@@ -33,7 +33,8 @@
     "@nexus/errors": "workspace:*",
     "@nexus/logger": "workspace:*",
     "@nexus/config": "workspace:*",
-    "@nexus/redis": "workspace:*"
+    "@nexus/redis": "workspace:*",
+    "@nexus/shared-types": "workspace:*"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",

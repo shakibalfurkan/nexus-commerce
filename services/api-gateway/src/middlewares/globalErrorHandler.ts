@@ -1,6 +1,6 @@
 import type { ErrorRequestHandler } from "express";
 
-import type { TErrorResponse, TErrorSource } from "../types/error.types.js";
+import type { TErrorResponse, TErrorSource } from "@nexus/shared-types";
 import { logger } from "../utils/logger.js";
 import config from "../config/index.js";
 

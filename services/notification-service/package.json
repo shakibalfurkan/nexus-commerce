@@ -30,7 +30,8 @@
     "@nexus/logger": "workspace:*",
     "@nexus/config": "workspace:*",
     "@nexus/event-contracts": "workspace:*",
-    "@nexus/kafka": "workspace:*"
+    "@nexus/kafka": "workspace:*",
+    "@nexus/shared-types": "workspace:*"
   },
   "devDependencies": {
     "@types/ejs": "^3.1.5",

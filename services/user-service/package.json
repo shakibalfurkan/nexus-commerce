@@ -36,7 +36,8 @@
     "@nexus/config": "workspace:*",
     "@nexus/redis": "workspace:*",
     "@nexus/event-contracts": "workspace:*",
-    "@nexus/kafka": "workspace:*"
+    "@nexus/kafka": "workspace:*",
+    "@nexus/shared-types": "workspace:*"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
