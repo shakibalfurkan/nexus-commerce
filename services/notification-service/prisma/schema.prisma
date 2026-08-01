@@ -1,38 +1,73 @@
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// NotificationLog — Idempotency & delivery tracking table
+//
+// Kafka delivers messages at-least-once, so consumers MUST be idempotent. The
+// `eventId` column (the Kafka envelope's `aggregateId`) has a unique constraint;
+// inserting a duplicate raises a Prisma unique-constraint violation that the
+// service layer treats as "already processed" and skips.
+//
+// The `status` column drives the state machine:
+//   PENDING → SENT  (happy path)
+//   PENDING → FAILED → retried up to `maxRetries` → DLQ
+//
+// `payloadSnapshot` stores the raw validated event so DLQ re-drive and debugging
+// can happen without the original Kafka message.
+// ─────────────────────────────────────────────────────────────────────────────
+
 model NotificationLog {
-  id               String             @id @default(uuid())
+  id                String             @id @default(uuid())
   /// Idempotency key — the Kafka envelope's per-event `aggregateId` (no `eventId` exists on the wire).
-  eventId          String             @unique
-  eventType        String
-  notificationType NotificationType
-  recipient        String
-  subject          String?
+  eventId           String             @unique
+  eventType         String
+  notificationType  NotificationType
+  recipient         String
+  subject           String?
   /// Raw event payload snapshot — enables DLQ re-drive and debugging without the original Kafka event.
-  payloadSnapshot  Json?
-  status           NotificationStatus @default(PENDING)
-  attemptCount     Int                @default(0)
-  maxRetries       Int                @default(3)
-  lastError        String?
-  traceparent      String?
-  correlationId    String?
-  processedAt      DateTime?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  payloadSnapshot   Json?
+  status            NotificationStatus @default(PENDING)
+  attemptCount      Int                @default(0)
+  maxRetries        Int                @default(3)
+  lastError         String?
+  /// Provider's message ID (e.g. Resend `id` field) — stored for observability and audit trails.
+  providerMessageId String?
+  /// Timestamp of the last send attempt — used for backoff calculations and SLA monitoring.
+  lastAttemptAt     DateTime?
+  /// When the next retry should fire — enables scheduled re-drive queries.
+  nextRetryAt       DateTime?
+  /// W3C traceparent propagated from Kafka message headers — enables distributed trace continuity.
+  traceparent       String?
+  /// Logical correlation ID for the causal chain (falls back to `aggregateId` when absent).
+  correlationId     String?
+  /// Causation ID — the event/command that directly caused this notification (optional, for deeper tracing).
+  causationId       String?
+  processedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@index([status, createdAt])
+  @@index([status, nextRetryAt])
   @@index([recipient, createdAt])
   @@index([eventType])
   @@index([notificationType])
   @@map("notification_logs")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DeadLetterEntry — Persistent DLQ for events that exhausted all retries
+//
+// After `maxRetries` failed attempts, the event is persisted here AND published
+// to the Kafka `dead-letter-queue` topic. The table survives broker retention
+// expiry and supports manual re-drive via an admin tool.
+// ─────────────────────────────────────────────────────────────────────────────
 
 model DeadLetterEntry {
   id            String   @id @default(uuid())
@@ -49,6 +84,7 @@ model DeadLetterEntry {
 
   @@index([eventType])
   @@index([enqueuedAt])
+  @@index([recipient])
   @@map("dead_letter_queue")
 }
 
