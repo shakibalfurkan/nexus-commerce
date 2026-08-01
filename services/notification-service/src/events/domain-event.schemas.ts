@@ -1,0 +1,169 @@
+import { z } from "zod";
+
+/**
+ * Wire-accurate Kafka event schemas for the `domain-events` topic.
+ *
+ * Verified against the actual producers (auth-service / user-service outbox
+ * writers). The wire envelope is NOT the `packages/event-contracts` shape:
+ *
+ *   {
+ *     eventName:   "email.verification.otp.sent",
+ *     aggregateId: "<per-event-uuid>",        // idempotency key source
+ *     payload:     { ... },
+ *     metadata:    { emittedAt, source, version }
+ *   }
+ *
+ * Trace context (`traceparent`) travels in the Kafka message HEADERS, not the
+ * JSON body — see each service's `src/events/eventBus.ts`. The body-to-header
+ * binding lives in `src/types/kafka-message.types.ts`.
+ */
+
+// ─── Notification Type (DB-agnostic mirror of the Prisma enum) ───
+
+export const NotificationType = {
+  EMAIL_VERIFICATION: "EMAIL_VERIFICATION",
+  WELCOME: "WELCOME",
+  PASSWORD_RESET: "PASSWORD_RESET",
+} as const;
+
+export type TNotificationType =
+  (typeof NotificationType)[keyof typeof NotificationType];
+
+// ─── Envelope Metadata ───
+
+export const EventEnvelopeMetadataSchema = z.object({
+  emittedAt: z.iso.datetime(),
+  source: z.string(),
+  version: z.number().int().positive(),
+});
+
+export type TEventEnvelopeMetadata = z.infer<
+  typeof EventEnvelopeMetadataSchema
+>;
+
+// ─── Domain Event Names ───
+
+export const DomainEventNames = [
+  "email.verification.otp.sent",
+  "password.reset.requested",
+  "user.registered",
+] as const;
+
+/**
+ * Keep in sync with the discriminated union below. The registry map acts as
+ * the single behavioural mapping (template / downstream type); this enum is
+ * only the accepted wire-name set.
+ */
+export const DomainEventNameSchema = z.enum(DomainEventNames);
+export type TDomainEventName = z.infer<typeof DomainEventNameSchema>;
+
+// ─── Individual Event Schemas (payloads intentionally strict — boundary) ───
+
+export const EmailVerificationOtpEventSchema = z.object({
+  eventName: z.literal("email.verification.otp.sent"),
+  aggregateId: z.uuid(),
+  payload: z.object({
+    firstName: z.string(),
+    email: z.email(),
+    otp: z.string(),
+  }),
+  metadata: EventEnvelopeMetadataSchema,
+});
+
+export type EmailVerificationOtpEvent = z.infer<
+  typeof EmailVerificationOtpEventSchema
+>;
+
+export const PasswordResetRequestedEventSchema = z.object({
+  eventName: z.literal("password.reset.requested"),
+  aggregateId: z.uuid(),
+  payload: z.object({
+    email: z.email(),
+    resetUiLink: z.string(),
+  }),
+  metadata: EventEnvelopeMetadataSchema,
+});
+
+export type PasswordResetRequestedEvent = z.infer<
+  typeof PasswordResetRequestedEventSchema
+>;
+
+export const UserRegisteredEventSchema = z.object({
+  eventName: z.literal("user.registered"),
+  aggregateId: z.uuid(),
+  payload: z.object({
+    userId: z.uuid(),
+    email: z.email(),
+    role: z.string(),
+    firstName: z.string(),
+    lastName: z.string(),
+    createdAt: z.iso.datetime(),
+  }),
+  metadata: EventEnvelopeMetadataSchema,
+});
+
+export type UserRegisteredEvent = z.infer<typeof UserRegisteredEventSchema>;
+
+// ─── Discriminated Union (Kafka boundary validation) ───
+
+export const DomainEventSchema = z.discriminatedUnion("eventName", [
+  EmailVerificationOtpEventSchema,
+  PasswordResetRequestedEventSchema,
+  UserRegisteredEventSchema,
+]);
+
+export type TDomainEvent = z.infer<typeof DomainEventSchema>;
+
+// ─── Event Registry (registry/map over conditional branching — .clinerules §7) ───
+
+/**
+ * One entry per handled event name. The `extractRecipient` callback is
+ * statically narrowed to the exact payload shape for its event, so a typo or
+ * missing field is a compile error rather than a runtime surprise.
+ */
+type TDomainEventRegistry = {
+  [K in TDomainEvent["eventName"]]: {
+    notificationType: TNotificationType;
+    /** EJS template filename (no extension) — resolves into src/templates/. */
+    templateKey: string;
+    extractRecipient: (
+      event: Extract<TDomainEvent, { eventName: K }>,
+    ) => string;
+  };
+};
+
+export const domainEventRegistry = {
+  "email.verification.otp.sent": {
+    notificationType: NotificationType.EMAIL_VERIFICATION,
+    templateKey: "email-verification",
+    extractRecipient: (event: EmailVerificationOtpEvent) => event.payload.email,
+  },
+  "password.reset.requested": {
+    notificationType: NotificationType.PASSWORD_RESET,
+    templateKey: "password-reset",
+    extractRecipient: (event: PasswordResetRequestedEvent) =>
+      event.payload.email,
+  },
+  "user.registered": {
+    notificationType: NotificationType.WELCOME,
+    templateKey: "welcome",
+    extractRecipient: (event: UserRegisteredEvent) => event.payload.email,
+  },
+} as const satisfies TDomainEventRegistry;
+
+/**
+ * Computed lookup helpers — single, typed accessors the core consumer uses.
+ * Unknown event names are rejected at the registry boundary instead of
+ * silently falling through scattered `switch` cases.
+ */
+export function getEventRegistryEntry(
+  eventName: TDomainEvent["eventName"],
+): (typeof domainEventRegistry)[TDomainEvent["eventName"]] {
+  return domainEventRegistry[eventName];
+}
+
+export function isHandledDomainEvent(
+  eventName: string,
+): eventName is TDomainEvent["eventName"] {
+  return eventName in domainEventRegistry;
+}

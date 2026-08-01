@@ -8,24 +8,29 @@ datasource db {
 }
 
 model NotificationLog {
-  id            String             @id @default(uuid())
-  eventId       String             @unique
-  eventType     String
-  recipient     String
-  subject       String?
-  status        NotificationStatus @default(PENDING)
-  attemptCount  Int                @default(0)
-  maxRetries    Int                @default(3)
-  lastError     String?
-  traceparent   String?
-  correlationId String?
-  processedAt   DateTime?
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  id               String             @id @default(uuid())
+  /// Idempotency key — the Kafka envelope's per-event `aggregateId` (no `eventId` exists on the wire).
+  eventId          String             @unique
+  eventType        String
+  notificationType NotificationType
+  recipient        String
+  subject          String?
+  /// Raw event payload snapshot — enables DLQ re-drive and debugging without the original Kafka event.
+  payloadSnapshot  Json?
+  status           NotificationStatus @default(PENDING)
+  attemptCount     Int                @default(0)
+  maxRetries       Int                @default(3)
+  lastError        String?
+  traceparent      String?
+  correlationId    String?
+  processedAt      DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   @@index([status, createdAt])
   @@index([recipient, createdAt])
   @@index([eventType])
+  @@index([notificationType])
   @@map("notification_logs")
 }
 
@@ -52,4 +57,10 @@ enum NotificationStatus {
   SENT
   FAILED
   DLQ
+}
+
+enum NotificationType {
+  EMAIL_VERIFICATION
+  WELCOME
+  PASSWORD_RESET
 }

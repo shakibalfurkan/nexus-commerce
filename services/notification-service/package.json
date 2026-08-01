@@ -25,6 +25,7 @@
     "nodemailer": "^8.0.1",
     "pg": "^8.22.0",
     "tsx": "^4.21.0",
+    "zod": "^4.3.5",
     "@nexus/shared-utils": "workspace:*",
     "@nexus/errors": "workspace:*",
     "@nexus/logger": "workspace:*",
