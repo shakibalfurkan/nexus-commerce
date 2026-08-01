@@ -1,0 +1,25 @@
+{
+  "name": "@nexus/kafka",
+  "version": "0.0.0",
+  "description": "Shared Kafka producer, consumer, DLQ routing, and outbox helpers for Nexus services",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4",
+    "uuid": "^14.0.1"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^26.1.2",
+    "typescript": "^5.9.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

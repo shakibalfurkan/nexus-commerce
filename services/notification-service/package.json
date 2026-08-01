@@ -22,7 +22,6 @@
     "ejs": "^4.0.1",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
-    "kafkajs": "^2.2.4",
     "nodemailer": "^8.0.1",
     "pg": "^8.22.0",
     "tsx": "^4.21.0",
@@ -30,7 +29,8 @@
     "@nexus/errors": "workspace:*",
     "@nexus/logger": "workspace:*",
     "@nexus/config": "workspace:*",
-    "@nexus/event-contracts": "workspace:*"
+    "@nexus/event-contracts": "workspace:*",
+    "@nexus/kafka": "workspace:*"
   },
   "devDependencies": {
     "@types/ejs": "^3.1.5",

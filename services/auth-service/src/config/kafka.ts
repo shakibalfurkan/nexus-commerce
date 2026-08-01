@@ -1,6 +1,5 @@
-import { Kafka, type SASLOptions } from "kafkajs";
+import { createKafkaClient } from "@nexus/kafka";
 import config from "./index.js";
-import logger from "../utils/logger.js";
 
 const { broker, username, password } = config.kafka;
 
@@ -9,27 +8,21 @@ export const KafkaTopics = {
   DLQ: "dead-letter-queue",
 } as const;
 
-let kafka: Kafka | null = null;
-let producer: ReturnType<Kafka["producer"]> | null = null;
+let kafka: ReturnType<typeof createKafkaClient> | null = null;
+let producer: ReturnType<typeof createKafkaClient>["producer"] | null = null;
 
 if (broker && username && password) {
-  kafka = new Kafka({
-    clientId: config.serviceName!,
-    brokers: [broker],
-    ssl: {
-      rejectUnauthorized: false,
-    },
-    sasl: {
-      mechanism: "scram-sha-256",
-      username,
-      password,
-    } as SASLOptions,
+  const client = createKafkaClient({
+    serviceName: config.serviceName,
+    node_env: config.node_env,
+    broker,
+    username,
+    password,
   });
-
-  producer = kafka.producer();
-  logger.info("Kafka client initialized.");
+  kafka = client.kafka;
+  producer = client.producer;
 } else {
-  logger.warn(
+  console.warn(
     "Kafka credentials not configured — event publishing will be disabled.",
   );
 }
