@@ -35,7 +35,8 @@
     "@nexus/errors": "workspace:*",
     "@nexus/logger": "workspace:*",
     "@nexus/config": "workspace:*",
-    "@nexus/redis": "workspace:*"
+    "@nexus/redis": "workspace:*",
+    "@nexus/event-contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

@@ -29,7 +29,8 @@
     "@nexus/shared-utils": "workspace:*",
     "@nexus/errors": "workspace:*",
     "@nexus/logger": "workspace:*",
-    "@nexus/config": "workspace:*"
+    "@nexus/config": "workspace:*",
+    "@nexus/event-contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/ejs": "^3.1.5",
