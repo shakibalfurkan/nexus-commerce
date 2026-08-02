@@ -22,6 +22,7 @@
     "@nexus/event-contracts": "workspace:*",
     "@nexus/kafka": "workspace:*",
     "@nexus/logger": "workspace:*",
+    "@nexus/redis": "workspace:*",
     "@nexus/shared-types": "workspace:*",
     "@nexus/shared-utils": "workspace:*",
     "@prisma/adapter-pg": "^7.9.1",

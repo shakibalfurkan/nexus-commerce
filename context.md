@@ -34,6 +34,9 @@ senior engineering showcase. Monorepo: Turborepo + pnpm.
    (except 429) non-retryable, 429/5xx/network retryable.
 6. **pnpm version**: project pins `pnpm@10.25.0`; system had v9 — resolved via
    `corepack enable && corepack prepare pnpm@10.25.0 --activate`.
+7. **Rate limiter**: atomic Lua script via Redis `EVAL` — sliding window ZSET
+   with `ZREMRANGEBYSCORE` + `ZCARD` + `ZADD` in a single atomic operation.
+   Recipient emails SHA-256 hashed in keys to avoid PII in Redis.
 
 ## Milestone 1 — DONE (committed `1f5e307`)
 
@@ -49,49 +52,48 @@ senior engineering showcase. Monorepo: Turborepo + pnpm.
   `604ab1c` — registry/map pattern, Zod discriminated union, traceparent from
   headers.
 
-## Milestone 2 — IN PROGRESS (Provider Abstraction & Template Engine)
-
-### Done
+## Milestone 2 — DONE (committed `841413e`)
 
 - `src/providers/email-provider.interface.ts`: `EmailProvider`,
   `SendEmailCommand`, `SendEmailResult`.
 - `src/providers/email-provider.error.ts`: `EmailProviderError` with
   `retryable`/`statusCode`/`providerCode`.
 - `src/providers/resend-email.provider.ts`: `ResendEmailProvider` (raw fetch,
-  timeout via AbortController, error classification). **NOTE: file was emptied
-  by a failed replace_in_file — needs rewrite.**
-- Deps installed: `react`, `react-email`, `@react-email/render`, `@types/react`,
-  `@types/react-dom`. Removed: `ejs`, `handlebars`, `nodemailer`, their
-  `@types`.
+  timeout via AbortController, error classification).
+- React Email templates (`.tsx`): `EmailLayout` shell +
+  `EmailVerificationEmail`, `WelcomeEmail`, `PasswordResetEmail` — typed props,
+  import from `react-email`.
+- `src/templates/template-engine.ts`: registry/map pattern mapping `templateKey`
+  → React component; `render()` from `@react-email/render`.
+- Config: `resend` block (apiKey, fromEmail, timeoutMs); SMTP removed.
+- Legacy files deleted: `.ejs` templates, `sendMail.ts`, `event-bus.ts`,
+  `kafka-consumer.ts`, `event-types.ts`, placeholder handlers.
+- Deps: `+ react`, `react-email`, `@react-email/render`; `- ejs`, `handlebars`,
+  `nodemailer`.
 
-### Remaining
+## Milestone 3 — DONE (committed pending)
 
-1. **Rewrite `resend-email.provider.ts`** (was emptied). Fix `providerCode`
-   optional-prop issue: build options object conditionally (don't pass
-   `undefined` with `exactOptionalPropertyTypes`).
-2. **React Email templates** in `src/templates/` (`.tsx`):
-   `EmailVerificationEmail`, `WelcomeEmail`, `PasswordResetEmail` — typed props,
-   import from `react-email` (Html, Body, Container, Heading, Text, Button, Hr,
-   Section, Preview, Img, Link).
-3. **Template engine** (`src/templates/template-engine.ts`): registry/map
-   pattern mapping `templateKey` → React component; `render()` from
-   `@react-email/render` to HTML string.
-4. **Update `src/config/index.ts`**: add `resend` config (apiKey, fromEmail,
-   timeoutMs); remove SMTP config.
-5. **Update `.env.example`**: already has `RESEND_API_KEY`, `RESEND_FROM_EMAIL`
-   — remove SMTP vars.
-6. **Delete legacy files**: `src/utils/sendMail.ts` (nodemailer), old `.ejs`
-   templates, `src/handlers/*` (will be replaced in M5),
-   `src/events/event-bus.ts`/`kafka-consumer.ts`/`event-types.ts` (legacy,
-   replaced in M5).
-7. **Verify typecheck** (`npx tsc --noEmit` → exit 0).
-8. **Commit** with Conventional Commits message.
-9. **Stop and ask approval** for Milestone 3.
+- `src/lib/redis.ts`: Redis client singleton via `@nexus/redis`
+  (`createRedisClient`), `disconnectRedis()` for graceful shutdown.
+- `src/ratelimit/rate-limiter.ts`: `SlidingWindowRateLimiter` — atomic Lua
+  script via `EVAL` (ZSET sliding window: `ZREMRANGEBYSCORE` → `ZCARD` →
+  `ZADD` + `PEXPIRE`). Returns `{ allowed, remaining, limit, retryAfterMs }`.
+  `checkOrThrow()` convenience throws `TooManyRequestsError`. Keys:
+  `notification:ratelimit:email:{notificationType}:{sha256(recipient)}` — no PII
+  in Redis. `createRateLimiter()` factory returns `null` if Redis unavailable
+  (fail-open decision deferred to M5).
+- `src/idempotency/idempotency.ts`: `claimNotification()` — inserts PENDING
+  `NotificationLog` row with `eventId` = Kafka `aggregateId`. Prisma P2002
+  (unique constraint) caught → `{ status: "duplicate" }`. Non-duplicate errors
+  re-thrown for M5 retry/DLQ routing. `isUniqueConstraintViolation()` uses
+  `instanceof Prisma.PrismaClientKnownRequestError` + duck-type fallback.
+- Config: `redis` block (url from `REDIS_DATABASE_URL`), `rateLimit` block
+  (maxRequests=5, windowMs=3600000). `.env.example` updated with
+  `RATE_LIMIT_MAX_REQUESTS`, `RATE_LIMIT_WINDOW_MS`.
+- Deps: `+ @nexus/redis` (workspace). Typecheck: `tsc --noEmit` exit 0.
 
 ## Milestones Ahead
 
-- **M3**: Redis namespaced rate limiter (`notification:ratelimit:*`) +
-  idempotency layer.
 - **M4**: Resilience engine (exponential backoff + jitter, circuit breaker).
 - **M5**: Core Kafka consumer + clean architecture service layer (DI, DLQ
   fallback).
@@ -100,10 +102,16 @@ senior engineering showcase. Monorepo: Turborepo + pnpm.
 ## Gotchas
 
 - `exactOptionalPropertyTypes: true` → optional props need `?: T | undefined`,
-  and never pass `undefined` explicitly to an optional prop.
+  and never pass `undefined` explicitly to an optional prop. Use conditional
+  spread: `...(value !== undefined ? { key: value } : {})`.
 - `@react-email/components` is deprecated — import everything from `react-email`
   directly.
 - Prisma client regenerates on `postinstall`; output path is
   `src/generated/prisma` (gitignored).
 - No local Docker — everything env-var driven for cloud
   (Neon/Aiven/Upstash/Resend).
+- ioredis `eval` returns `unknown` — cast to `unknown[]` and use `Number()` for
+  Lua return values (may arrive as strings or numbers depending on ioredis
+  version).
+- `noUncheckedIndexedAccess: true` → array access returns `T | undefined`; use
+  `??` fallback.

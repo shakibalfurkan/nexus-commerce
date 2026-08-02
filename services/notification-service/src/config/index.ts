@@ -14,6 +14,17 @@ export default {
     password: process.env.KAFKA_PASSWORD,
   },
 
+  redis: {
+    url: process.env.REDIS_DATABASE_URL,
+  },
+
+  rateLimit: {
+    /** Max verification emails per recipient per window. */
+    maxRequests: Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 5,
+    /** Sliding window length in ms (default: 1 hour). */
+    windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 3_600_000,
+  },
+
   resend: {
     apiKey: process.env.RESEND_API_KEY,
     fromEmail: optionalEnv(
