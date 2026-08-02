@@ -112,7 +112,7 @@ senior engineering showcase. Monorepo: Turborepo + pnpm.
   `CB_RESET_TIMEOUT_MS`.
 - Typecheck: `tsc --noEmit` exit 0.
 
-## Milestone 5 — DONE (committed pending)
+## Milestone 5 — DONE (committed `c986937`)
 
 - `src/services/notification-service.ts`: `NotificationService` class — clean
   architecture domain layer with DI. `processEvent()` orchestrates: registry
@@ -139,9 +139,23 @@ senior engineering showcase. Monorepo: Turborepo + pnpm.
 - Typecheck: `tsc --noEmit` exit 0. `as never` casts used for TypeScript
   correlated-union limitation (TS#30581).
 
-## Milestones Ahead
+## Milestone 6 — DONE (committed pending)
 
-- **M6**: System design interview cheat sheet.
+- `docs/system-design-cheatsheet.md`: Comprehensive system design interview
+  cheat sheet covering:
+  - Why "exactly-once delivery" is impossible (Two Generals Problem, FLP
+    Impossibility, crash window, Kafka's actual guarantees)
+  - How this architecture handles failures (at-least-once + idempotency, error
+    classification, exponential backoff + full jitter, circuit breaker, DLQ,
+    rate limiting, before/after log error strategy)
+  - Architecture diagram (text-based)
+  - Key trade-offs table
+  - 5 failure scenarios with step-by-step handling
+  - Observability (structured logging, traceparent propagation, NotificationLog
+    audit trail)
+  - 6 interview talking points with model answers
+
+## All Milestones Complete ✅
 
 ## Gotchas
 
