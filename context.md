@@ -92,7 +92,7 @@ senior engineering showcase. Monorepo: Turborepo + pnpm.
   `RATE_LIMIT_MAX_REQUESTS`, `RATE_LIMIT_WINDOW_MS`.
 - Deps: `+ @nexus/redis` (workspace). Typecheck: `tsc --noEmit` exit 0.
 
-## Milestone 4 — DONE (committed pending)
+## Milestone 4 — DONE (committed `6910cfb`)
 
 - `src/resilience/backoff.ts`: `calculateBackoff()` (full jitter — random
   between 0 and min(base \* 2^attempt, max)), `sleep()`, `retryWithBackoff()`
@@ -112,10 +112,35 @@ senior engineering showcase. Monorepo: Turborepo + pnpm.
   `CB_RESET_TIMEOUT_MS`.
 - Typecheck: `tsc --noEmit` exit 0.
 
+## Milestone 5 — DONE (committed pending)
+
+- `src/services/notification-service.ts`: `NotificationService` class — clean
+  architecture domain layer with DI. `processEvent()` orchestrates: registry
+  lookup → idempotency claim → rate limit check → template render → email send
+  (circuit breaker + retryWithBackoff) → markAsSent/markAsFailed → DLQ routing.
+  Errors before log creation throw (KafkaJS redelivers); errors after log
+  creation are caught and return `{ status: "failed" }` (log tracks retry).
+- `src/services/notification-log.ts`: `markAsSent()`, `markAsFailed()` —
+  infrastructure adapters using Prisma. `markAsFailed` increments attemptCount
+  and returns updated values for DLQ check.
+- `src/services/dlq.ts`: `routeToDlq()` — updates NotificationLog to DLQ,
+  creates DeadLetterEntry, publishes to Kafka DLQ topic. Never silently drops
+  (`.clinerules` §6).
+- `src/events/kafka-consumer.ts`: Kafka consumer using `kafka.consumer()` from
+  `@nexus/kafka`. Parses messages with `parseKafkaMessage` (headers for
+  traceparent/correlationId). Re-throws pre-log errors for KafkaJS redelivery.
+- `src/container.ts`: Composition root — wires ResendEmailProvider,
+  CircuitBreaker (shouldTrip = isRetryableEmailError), RateLimiter,
+  BackoffOptions into NotificationService. `startNotificationPipeline()` creates
+  service + starts consumer.
+- `src/server.ts`: Updated to call `startNotificationPipeline()` on startup.
+- `src/events/domain-event.schemas.ts`: Added `getSubject` to
+  `domainEventRegistry` (per-event-type email subject line).
+- Typecheck: `tsc --noEmit` exit 0. `as never` casts used for TypeScript
+  correlated-union limitation (TS#30581).
+
 ## Milestones Ahead
 
-- **M5**: Core Kafka consumer + clean architecture service layer (DI, DLQ
-  fallback).
 - **M6**: System design interview cheat sheet.
 
 ## Gotchas

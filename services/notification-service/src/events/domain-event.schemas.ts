@@ -124,11 +124,13 @@ export type TDomainEvent = z.infer<typeof DomainEventSchema>;
 type TDomainEventRegistry = {
   [K in TDomainEvent["eventName"]]: {
     notificationType: TNotificationType;
-    /** EJS template filename (no extension) — resolves into src/templates/. */
+    /** Template filename (no extension) — resolves into src/templates/. */
     templateKey: string;
     extractRecipient: (
       event: Extract<TDomainEvent, { eventName: K }>,
     ) => string;
+    /** Email subject line for this event type. */
+    getSubject: (event: Extract<TDomainEvent, { eventName: K }>) => string;
   };
 };
 
@@ -137,17 +139,22 @@ export const domainEventRegistry = {
     notificationType: NotificationType.EMAIL_VERIFICATION,
     templateKey: "email-verification",
     extractRecipient: (event: EmailVerificationOtpEvent) => event.payload.email,
+    getSubject: (event: EmailVerificationOtpEvent) =>
+      `Your Nexus verification code is ${event.payload.otp}`,
   },
   "password.reset.requested": {
     notificationType: NotificationType.PASSWORD_RESET,
     templateKey: "password-reset",
     extractRecipient: (event: PasswordResetRequestedEvent) =>
       event.payload.email,
+    getSubject: () => "Reset your Nexus password",
   },
   "user.registered": {
     notificationType: NotificationType.WELCOME,
     templateKey: "welcome",
     extractRecipient: (event: UserRegisteredEvent) => event.payload.email,
+    getSubject: (event: UserRegisteredEvent) =>
+      `Welcome to Nexus, ${event.payload.firstName}!`,
   },
 } as const satisfies TDomainEventRegistry;
 
