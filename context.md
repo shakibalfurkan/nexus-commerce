@@ -71,7 +71,7 @@ senior engineering showcase. Monorepo: Turborepo + pnpm.
 - Deps: `+ react`, `react-email`, `@react-email/render`; `- ejs`, `handlebars`,
   `nodemailer`.
 
-## Milestone 3 — DONE (committed pending)
+## Milestone 3 — DONE (committed `47dd827`)
 
 - `src/lib/redis.ts`: Redis client singleton via `@nexus/redis`
   (`createRedisClient`), `disconnectRedis()` for graceful shutdown.
@@ -92,9 +92,28 @@ senior engineering showcase. Monorepo: Turborepo + pnpm.
   `RATE_LIMIT_MAX_REQUESTS`, `RATE_LIMIT_WINDOW_MS`.
 - Deps: `+ @nexus/redis` (workspace). Typecheck: `tsc --noEmit` exit 0.
 
+## Milestone 4 — DONE (committed pending)
+
+- `src/resilience/backoff.ts`: `calculateBackoff()` (full jitter — random
+  between 0 and min(base \* 2^attempt, max)), `sleep()`, `retryWithBackoff()`
+  wrapper (max 3 attempts, only retries when `shouldRetry` returns true,
+  non-retryable errors thrown immediately). `createBackoffOptions()` factory
+  from config.
+- `src/resilience/circuit-breaker.ts`: `CircuitBreaker` class —
+  CLOSED/OPEN/HALF_OPEN state machine. `execute<T>()` wraps async operations;
+  OPEN state fast-fails with `CircuitBreakerError`. `shouldTrip` predicate
+  determines which errors count as failures (for email provider: only
+  `EmailProviderError` with `retryable: true`). `createCircuitBreaker()` factory
+  from config.
+- Config: `resilience` block (backoffBaseMs=1000, backoffMaxMs=30000,
+  maxAttempts=3, circuitBreakerFailureThreshold=5,
+  circuitBreakerResetTimeoutMs=30000). `.env.example` updated with
+  `BACKOFF_BASE_MS`, `BACKOFF_MAX_MS`, `MAX_ATTEMPTS`, `CB_FAILURE_THRESHOLD`,
+  `CB_RESET_TIMEOUT_MS`.
+- Typecheck: `tsc --noEmit` exit 0.
+
 ## Milestones Ahead
 
-- **M4**: Resilience engine (exponential backoff + jitter, circuit breaker).
 - **M5**: Core Kafka consumer + clean architecture service layer (DI, DLQ
   fallback).
 - **M6**: System design interview cheat sheet.
