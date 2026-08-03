@@ -186,6 +186,37 @@ Prefer current stable over blindly matching the oldest version already in the
 repo, but flag any upgrade that looks non-trivial (major version jump,
 documented breaking change) rather than silently applying it.
 
+## 8.6. Context Compression (Headroom)
+
+Default to compressing, don't wait to be asked. Before reading into context any
+file read, search result, command output, or log that's roughly 500+ tokens (a
+rough gauge: more than ~50-75 lines of text, or any JSON/log dump that looks
+bulky), run it through `headroom_compress` first and work from the compressed
+version. Only skip compression for content already small enough that the
+compression call itself would cost more than it saves (short snippets, brief
+command outputs, small config files). If you need the full original later, use
+`headroom_retrieve` with the returned hash — note originals expire after 1 hour,
+so retrieve promptly if you'll need the full content again. Check
+`headroom_stats` periodically to confirm real savings are accumulating, not just
+assumed.
+
+## 8.7. Codebase Navigation (Graphify)
+
+Before reading many files to understand how services/modules connect, use the
+graphify CLI via terminal instead of grepping or opening files one by one to
+trace relationships:
+
+- `graphify query "<question>"` — scoped answer to a plain-language question
+  about the codebase
+- `graphify path "<A>" "<B>"` — shortest relationship path between two
+  concepts/modules
+- `graphify explain "<name>"` — all connections for one function/class/module
+  The graph auto-rebuilds after every commit (git hook installed) — don't
+  manually re-run `graphify update .` out of habit. Only run it explicitly if
+  you need the graph to reflect changes made earlier in the _current_,
+  not-yet-committed session. Fall back to direct file reads only when the graph
+  doesn't have the answer.
+
 ## 9. Workflow — Milestone Execution (critical)
 
 For any new service/feature/refactor: work **one milestone at a time**. Never

@@ -139,7 +139,7 @@ senior engineering showcase. Monorepo: Turborepo + pnpm.
 - Typecheck: `tsc --noEmit` exit 0. `as never` casts used for TypeScript
   correlated-union limitation (TS#30581).
 
-## Milestone 6 — DONE (committed pending)
+## Milestone 6 — DONE (committed dc7ed84)
 
 - `docs/system-design-cheatsheet.md`: Comprehensive system design interview
   cheat sheet covering:
