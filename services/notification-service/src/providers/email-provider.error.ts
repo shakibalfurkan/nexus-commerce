@@ -24,15 +24,11 @@ export class EmailProviderError extends Error {
   readonly providerCode: string | undefined;
 
   constructor(message: string, options: EmailProviderErrorOptions) {
-    super(message);
+    // Native ES2022 cause — cleaner than a type-cast assignment.
+    super(message, options.cause !== undefined ? { cause: options.cause } : {});
     this.name = "EmailProviderError";
     this.retryable = options.retryable;
     this.statusCode = options.statusCode;
     this.providerCode = options.providerCode;
-
-    // Preserve the cause chain for debugging (ES2022).
-    if (options.cause !== undefined) {
-      (this as { cause?: unknown }).cause = options.cause;
-    }
   }
 }

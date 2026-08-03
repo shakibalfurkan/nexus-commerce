@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { Redis } from "@nexus/redis";
 import { TooManyRequestsError } from "@nexus/errors";
@@ -35,6 +35,9 @@ const RATE_LIMIT_NAMESPACE = "notification:ratelimit";
  * ARGV[2] = windowMs
  * ARGV[3] = limit
  * ARGV[4] = ttlMs (key expiry — window + buffer)
+ * ARGV[5] = unique member suffix (caller-generated UUID — Redis server-side
+ *           math.random is not entropy-seeded per-request, so a caller UUID
+ *           guarantees ZSET member uniqueness even within the same ms)
  *
  * Returns: { allowed (0/1), count, retryAfterMs }
  */
@@ -48,7 +51,7 @@ if count >= tonumber(ARGV[3]) then
   if retryAfter < 0 then retryAfter = 0 end
   return {0, count, retryAfter}
 end
-redis.call('ZADD', KEYS[1], ARGV[1], ARGV[1] .. ':' .. tostring(math.random()))
+redis.call('ZADD', KEYS[1], ARGV[1], ARGV[1] .. ':' .. ARGV[5])
 redis.call('PEXPIRE', KEYS[1], ARGV[4])
 return {1, count + 1, 0}
 `;
@@ -108,6 +111,7 @@ export class SlidingWindowRateLimiter {
       String(this.windowMs),
       String(this.limit),
       String(ttlMs),
+      `${now}:${randomUUID()}`,
     );
 
     // Lua numbers arrive as strings or numbers depending on ioredis version.
