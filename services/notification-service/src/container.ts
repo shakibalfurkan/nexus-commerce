@@ -6,7 +6,6 @@ import { createBackoffOptions } from "./resilience/backoff.js";
 import { NotificationService } from "./services/notification-service.js";
 import { startKafkaConsumer } from "./events/kafka-consumer.js";
 import config from "./config/index.js";
-import logger from "./utils/logger.js";
 
 /**
  * Composition Root — Wires all dependencies together using Dependency
@@ -55,16 +54,12 @@ export function createNotificationService(): NotificationService {
 /**
  * Start the full notification pipeline: create the service and start the
  * Kafka consumer. Called from server.ts on startup.
+ *
+ * Errors propagate to the caller (server.ts), which fails fast with a
+ * non-zero exit — a broken Kafka/Resend config must not silently leave the
+ * service running with notifications disabled.
  */
 export async function startNotificationPipeline(): Promise<void> {
-  try {
-    const service = createNotificationService();
-    await startKafkaConsumer(service);
-  } catch (error) {
-    logger.error("Failed to start notification pipeline", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    // Don't crash the server — the health endpoint still works.
-    // The pipeline can be restarted manually or via a health check.
-  }
+  const service = createNotificationService();
+  await startKafkaConsumer(service);
 }

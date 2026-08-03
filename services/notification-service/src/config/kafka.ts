@@ -1,5 +1,6 @@
 import { createKafkaClient, type Kafka, type Producer } from "@nexus/kafka";
 import config from "./index.js";
+import logger from "../utils/logger.js";
 
 const broker = config.kafka.broker ?? "";
 const username = config.kafka.username ?? "";
@@ -24,9 +25,23 @@ if (broker && username && password) {
   kafka = client.kafka;
   producer = client.producer;
 } else {
-  console.warn(
+  logger.warn(
     "Kafka credentials not configured — event publishing will be disabled.",
   );
+}
+
+/**
+ * Gracefully disconnect the Kafka producer (called on shutdown).
+ */
+export async function disconnectKafkaProducer(): Promise<void> {
+  if (producer) {
+    try {
+      await producer.disconnect();
+      logger.info("Kafka producer disconnected.");
+    } catch (err) {
+      logger.error("Error disconnecting Kafka producer:", err);
+    }
+  }
 }
 
 export { kafka, producer };

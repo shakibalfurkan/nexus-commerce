@@ -19,6 +19,22 @@ import logger from "../utils/logger.js";
 
 const CONSUMER_GROUP_ID = "notification-service";
 
+let consumer: ReturnType<NonNullable<typeof kafka>["consumer"]> | null = null;
+
+/**
+ * Gracefully disconnect the Kafka consumer (called on shutdown).
+ */
+export async function disconnectKafkaConsumer(): Promise<void> {
+  if (consumer) {
+    try {
+      await consumer.disconnect();
+      logger.info("Kafka consumer disconnected.");
+    } catch (err) {
+      logger.error("Error disconnecting Kafka consumer:", err);
+    }
+  }
+}
+
 export async function startKafkaConsumer(
   service: NotificationService,
 ): Promise<void> {
@@ -30,7 +46,7 @@ export async function startKafkaConsumer(
     return;
   }
 
-  const consumer = kafka.consumer({
+  consumer = kafka.consumer({
     groupId: CONSUMER_GROUP_ID,
     sessionTimeout: 30_000,
     heartbeatInterval: 3_000,
