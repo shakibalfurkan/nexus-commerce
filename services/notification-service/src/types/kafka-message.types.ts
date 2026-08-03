@@ -31,7 +31,7 @@ export interface IncomingNotificationMessage {
 const TRACEPARENT_HEADER = "traceparent";
 const CORRELATION_ID_HEADERS = ["correlationid", "correlation-id"] as const;
 
-function readHeader(
+export function readHeader(
   headers: KafkaMessageHeaders,
   key: string,
 ): string | undefined {

@@ -93,3 +93,87 @@ export async function routeToDlq(input: RouteToDlqInput): Promise<void> {
     failureReason: input.failureReason,
   });
 }
+
+// ─── Poison-Message Routing ───
+
+export interface RoutePoisonMessageInput {
+  /** Stable dedup key — `${topic}:${partition}:${offset}`. */
+  dedupeKey: string;
+  /** Raw (unparsed) Kafka payload for debugging / manual re-drive. */
+  rawPayload: string;
+  failureReason: string;
+  traceparent?: string;
+  correlationId?: string;
+}
+
+/**
+ * Route a poison message — a Kafka payload that fails JSON.parse or schema
+ * validation before a NotificationLog row can be claimed. Permanently
+ * malformed, so re-throwing would cause KafkaJS infinite redelivery
+ * (`.clinerules` §6). Persist to DeadLetterEntry + publish to DLQ topic,
+ * then ACK.
+ */
+export async function routePoisonMessage(
+  input: RoutePoisonMessageInput,
+): Promise<void> {
+  // Idempotency guard for at-least-once redelivery (e.g. crash after publish).
+  const existing = await prisma.deadLetterEntry.findFirst({
+    where: { eventId: input.dedupeKey },
+    select: { id: true },
+  });
+  if (existing) {
+    logger.warn("Poison message already routed to DLQ — skipping", {
+      eventId: input.dedupeKey,
+    });
+    return;
+  }
+
+  await prisma.deadLetterEntry.create({
+    data: {
+      eventId: input.dedupeKey,
+      eventType: "kafka.parse_error",
+      // Recipient is not derivable from a malformed message. The raw payload
+      // is preserved verbatim for manual inspection / re-drive.
+      recipient: "unknown",
+      payload: input.rawPayload,
+      failureReason: input.failureReason,
+      attemptCount: 1,
+      ...(input.traceparent !== undefined
+        ? { traceparent: input.traceparent }
+        : {}),
+      ...(input.correlationId !== undefined
+        ? { correlationId: input.correlationId }
+        : {}),
+    },
+  });
+
+  if (producer) {
+    try {
+      await producer.send({
+        topic: KafkaTopics.DLQ,
+        messages: [
+          {
+            key: input.dedupeKey,
+            value: JSON.stringify({
+              eventId: input.dedupeKey,
+              failureReason: input.failureReason,
+              rawPayload: input.rawPayload,
+            }),
+          },
+        ],
+      });
+    } catch (error) {
+      // DB entry is the source of truth — Kafka publish failure must not
+      // fail the ACK path (the message is already safe from infinite retry).
+      logger.error("Failed to publish poison message to Kafka DLQ", {
+        eventId: input.dedupeKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  logger.error("Poison message routed to DLQ", {
+    eventId: input.dedupeKey,
+    failureReason: input.failureReason,
+  });
+}

@@ -1,5 +1,6 @@
 import { kafka, KafkaTopics } from "../config/kafka.js";
-import { parseKafkaMessage } from "../types/kafka-message.types.js";
+import { parseKafkaMessage, readHeader } from "../types/kafka-message.types.js";
+import { routePoisonMessage } from "../services/dlq.js";
 import type { NotificationService } from "../services/notification-service.js";
 import logger from "../utils/logger.js";
 
@@ -9,7 +10,7 @@ import logger from "../utils/logger.js";
  *
  * Error strategy:
  * - `parseKafkaMessage` failures (malformed JSON, schema validation) →
- *   log and re-throw so KafkaJS redelivers the message.
+ *   poison message — route to DLQ and ACK (never infinite-redeliver).
  * - `processEvent` failures BEFORE log creation (claim, DB errors) →
  *   re-throw so KafkaJS redelivers.
  * - `processEvent` results AFTER log creation (sent, skipped, failed) →
@@ -46,7 +47,7 @@ export async function startKafkaConsumer(
   );
 
   await consumer.run({
-    eachMessage: async ({ message }) => {
+    eachMessage: async ({ topic, partition, message }) => {
       const value = message.value?.toString() ?? null;
       const headers = message.headers ?? {};
 
@@ -54,12 +55,31 @@ export async function startKafkaConsumer(
       try {
         parsed = parseKafkaMessage(value, headers);
       } catch (error) {
-        logger.error("Failed to parse Kafka message", {
-          error: error instanceof Error ? error.message : String(error),
-          topic: KafkaTopics.DOMAIN_EVENTS,
+        // Poison message — permanently malformed. Re-throwing would cause
+        // KafkaJS to infinitely redeliver (`.clinerules` §6). Route to DLQ
+        // and ACK instead.
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const offset = message.offset;
+        const traceparent = readHeader(headers, "traceparent");
+        const correlationId =
+          readHeader(headers, "correlationid") ??
+          readHeader(headers, "correlation-id");
+
+        logger.error("Failed to parse Kafka message — routing to DLQ", {
+          topic,
+          partition,
+          offset,
+          error: errorMsg,
         });
-        // Re-throw: malformed messages should be retried by KafkaJS
-        throw error;
+
+        await routePoisonMessage({
+          dedupeKey: `${topic}:${partition}:${offset}`,
+          rawPayload: value ?? "",
+          failureReason: errorMsg,
+          ...(traceparent !== undefined ? { traceparent } : {}),
+          ...(correlationId !== undefined ? { correlationId } : {}),
+        });
+        return;
       }
 
       try {

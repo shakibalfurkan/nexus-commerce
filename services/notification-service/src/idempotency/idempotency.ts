@@ -101,9 +101,30 @@ export async function claimNotification(
     return { status: "claimed", logId: log.id };
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {
-      logger.info("Duplicate event detected — already processed", {
+      // Kafka redelivery hit the unique key. Look up the existing row's
+      // status to distinguish a terminal duplicate from an in-flight
+      // notification (crash between claim and completion):
+      //   PENDING/FAILED → reclaim so the retry/DLQ flow continues.
+      //   SENT/DLQ       → terminal duplicate, skip.
+      const existing = await prisma.notificationLog.findUnique({
+        where: { eventId: input.eventId },
+        select: { id: true, status: true },
+      });
+
+      if (existing && existing.status !== "SENT" && existing.status !== "DLQ") {
+        logger.warn("Redelivery of in-flight notification — reclaiming", {
+          eventId: input.eventId,
+          eventType: input.eventType,
+          existingLogId: existing.id,
+          existingStatus: existing.status,
+        });
+        return { status: "claimed", logId: existing.id };
+      }
+
+      logger.info("Duplicate event detected — terminal state reached", {
         eventId: input.eventId,
         eventType: input.eventType,
+        existingStatus: existing?.status ?? "unknown",
       });
       return { status: "duplicate" };
     }
