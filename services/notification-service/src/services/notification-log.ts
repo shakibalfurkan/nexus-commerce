@@ -1,4 +1,8 @@
 import { prisma } from "../lib/prisma.js";
+import {
+  calculateBackoff,
+  type BackoffOptions,
+} from "../resilience/backoff.js";
 import logger from "../utils/logger.js";
 
 /**
@@ -31,12 +35,25 @@ export async function markAsSent(
  * Mark a notification as failed and schedule a retry.
  * Increments `attemptCount` and returns the updated values so the caller
  * can check if `maxRetries` is exceeded and route to DLQ.
+ *
+ * `nextRetryAt` is computed from the actual attempt count so the backoff
+ * grows exponentially across retries (attempt 0 → base, attempt 1 → 2x, ...).
  */
 export async function markAsFailed(
   logId: string,
   errorMessage: string,
-  nextRetryAt: Date,
+  backoffOptions: BackoffOptions,
 ): Promise<{ attemptCount: number; maxRetries: number }> {
+  // Read the current count so the next retry index (0-based) is correct.
+  const current = await prisma.notificationLog.findUnique({
+    where: { id: logId },
+    select: { attemptCount: true },
+  });
+  const nextAttemptIndex = (current?.attemptCount ?? 0) + 1;
+  const nextRetryAt = new Date(
+    Date.now() + calculateBackoff(nextAttemptIndex, backoffOptions),
+  );
+
   const updated = await prisma.notificationLog.update({
     where: { id: logId },
     data: {

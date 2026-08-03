@@ -47,6 +47,8 @@ export class CircuitBreaker {
   private state: CircuitBreakerState = "CLOSED";
   private failureCount = 0;
   private lastFailureTime = 0;
+  /** Guards the single HALF_OPEN trial request (see execute()). */
+  private halfOpenInFlight = false;
   private readonly failureThreshold: number;
   private readonly resetTimeoutMs: number;
   private readonly shouldTrip: (error: unknown) => boolean;
@@ -73,7 +75,17 @@ export class CircuitBreaker {
     if (this.state === "OPEN") {
       const elapsed = Date.now() - this.lastFailureTime;
       if (elapsed >= this.resetTimeoutMs) {
+        // Only one caller may run the HALF_OPEN trial. The flag is set
+        // synchronously before the await, so concurrent callers passing the
+        // OPEN check see it true and fast-fail — enforcing the documented
+        // "single test request" design.
+        if (this.halfOpenInFlight) {
+          throw new CircuitBreakerError(
+            "Circuit breaker is OPEN — trial request already in flight",
+          );
+        }
         this.state = "HALF_OPEN";
+        this.halfOpenInFlight = true;
         logger.warn("Circuit breaker transitioning OPEN → HALF_OPEN");
       } else {
         throw new CircuitBreakerError(
@@ -99,6 +111,7 @@ export class CircuitBreaker {
     if (this.state === "HALF_OPEN") {
       this.state = "CLOSED";
       this.failureCount = 0;
+      this.halfOpenInFlight = false;
       logger.info("Circuit breaker CLOSED — external dependency recovered");
     }
   }
@@ -109,6 +122,7 @@ export class CircuitBreaker {
 
     if (this.state === "HALF_OPEN") {
       this.state = "OPEN";
+      this.halfOpenInFlight = false;
       logger.warn("Circuit breaker re-opened from HALF_OPEN");
       return;
     }

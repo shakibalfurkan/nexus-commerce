@@ -3,7 +3,7 @@ import { EmailProviderError } from "../providers/email-provider.error.js";
 import type { SlidingWindowRateLimiter } from "../ratelimit/rate-limiter.js";
 import { buildRateLimitKey } from "../ratelimit/rate-limiter.js";
 import type { CircuitBreaker } from "../resilience/circuit-breaker.js";
-import { retryWithBackoff, calculateBackoff } from "../resilience/backoff.js";
+import { retryWithBackoff } from "../resilience/backoff.js";
 import type { BackoffOptions } from "../resilience/backoff.js";
 import { claimNotification } from "../idempotency/idempotency.js";
 import type { ClaimNotificationInput } from "../idempotency/idempotency.js";
@@ -132,13 +132,10 @@ export class NotificationService {
         );
         const rateLimitResult = await this.deps.rateLimiter.check(rateLimitKey);
         if (!rateLimitResult.allowed) {
-          const nextRetryAt = new Date(
-            Date.now() + rateLimitResult.retryAfterMs,
-          );
           const { attemptCount, maxRetries } = await markAsFailed(
             logId,
             `Rate limit exceeded. Retry after ${Math.ceil(rateLimitResult.retryAfterMs / 1000)}s.`,
-            nextRetryAt,
+            this.deps.backoffOptions,
           );
           const routedToDlq = attemptCount >= maxRetries;
           if (routedToDlq) {
@@ -207,14 +204,10 @@ export class NotificationService {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 
-      const nextRetryAt = new Date(
-        Date.now() + calculateBackoff(0, this.deps.backoffOptions),
-      );
-
       const { attemptCount, maxRetries } = await markAsFailed(
         logId,
         errorMessage,
-        nextRetryAt,
+        this.deps.backoffOptions,
       );
 
       const routedToDlq = attemptCount >= maxRetries;
