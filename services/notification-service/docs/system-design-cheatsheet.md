@@ -166,7 +166,7 @@ without the original Kafka message.
 Per-recipient rate limiting prevents abuse (max 5 verification emails/hour):
 
 ```
-Key: notification:ratelimit:email:{notificationType}:{sha256(recipient)}
+Key: notification:ratelimit:email:{eventType}:{sha256(recipient)}
 ```
 
 - **Sliding window via ZSET**: `ZREMRANGEBYSCORE` (remove expired) → `ZCARD`

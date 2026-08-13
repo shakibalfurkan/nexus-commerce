@@ -30,7 +30,7 @@ const RATE_LIMIT_NAMESPACE = "notification:ratelimit";
  * Atomic Lua script — executed via EVAL. Redis is single-threaded, so the
  * script runs without interruption.
  *
- * KEYS[1] = sorted-set key (e.g. notification:ratelimit:email:EMAIL_VERIFICATION:<hash>)
+ * KEYS[1] = sorted-set key (e.g. notification:ratelimit:email:email.verification.otp.sent:<hash>)
  * ARGV[1] = now (ms)
  * ARGV[2] = windowMs
  * ARGV[3] = limit
@@ -164,15 +164,15 @@ export function hashRecipient(recipient: string): string {
 }
 
 /**
- * Build the rate-limit identifier for a recipient + notification type.
- * Key shape: `email:<notificationType>:<sha256(recipient)>` — namespaced
+ * Build the rate-limit identifier for a recipient + event type.
+ * Key shape: `email:<eventType>:<sha256(recipient)>` — namespaced
  * under `notification:ratelimit:` by the limiter.
  */
 export function buildRateLimitKey(
   recipient: string,
-  notificationType: string,
+  eventType: string,
 ): string {
-  return `email:${notificationType}:${hashRecipient(recipient)}`;
+  return `email:${eventType}:${hashRecipient(recipient)}`;
 }
 
 // ─── Factory ───

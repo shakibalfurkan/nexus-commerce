@@ -18,17 +18,6 @@ import { z } from "zod";
  * binding lives in `src/types/kafka-message.types.ts`.
  */
 
-// ─── Notification Type (DB-agnostic mirror of the Prisma enum) ───
-
-export const NotificationType = {
-  EMAIL_VERIFICATION: "EMAIL_VERIFICATION",
-  WELCOME: "WELCOME",
-  PASSWORD_RESET: "PASSWORD_RESET",
-} as const;
-
-export type TNotificationType =
-  (typeof NotificationType)[keyof typeof NotificationType];
-
 // ─── Envelope Metadata ───
 
 export const EventEnvelopeMetadataSchema = z.object({
@@ -123,7 +112,6 @@ export type TDomainEvent = z.infer<typeof DomainEventSchema>;
  */
 type TDomainEventRegistry = {
   [K in TDomainEvent["eventName"]]: {
-    notificationType: TNotificationType;
     /** Template filename (no extension) — resolves into src/templates/. */
     templateKey: string;
     extractRecipient: (
@@ -136,21 +124,18 @@ type TDomainEventRegistry = {
 
 export const domainEventRegistry = {
   "email.verification.otp.sent": {
-    notificationType: NotificationType.EMAIL_VERIFICATION,
     templateKey: "email-verification",
     extractRecipient: (event: EmailVerificationOtpEvent) => event.payload.email,
     getSubject: (event: EmailVerificationOtpEvent) =>
       `Your Nexus verification code is ${event.payload.otp}`,
   },
   "password.reset.requested": {
-    notificationType: NotificationType.PASSWORD_RESET,
     templateKey: "password-reset",
     extractRecipient: (event: PasswordResetRequestedEvent) =>
       event.payload.email,
     getSubject: () => "Reset your Nexus password",
   },
   "user.registered": {
-    notificationType: NotificationType.WELCOME,
     templateKey: "welcome",
     extractRecipient: (event: UserRegisteredEvent) => event.payload.email,
     getSubject: (event: UserRegisteredEvent) =>

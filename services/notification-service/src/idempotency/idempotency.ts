@@ -1,6 +1,5 @@
 import { prisma } from "../lib/prisma.js";
 import { Prisma } from "../generated/prisma/client.js";
-import type { TNotificationType } from "../events/domain-event.schemas.js";
 import logger from "../utils/logger.js";
 
 /**
@@ -28,8 +27,6 @@ export interface ClaimNotificationInput {
   eventId: string;
   /** Domain event name (e.g. "email.verification.otp.sent"). */
   eventType: string;
-  /** Notification type (mirrors the Prisma enum). */
-  notificationType: TNotificationType;
   /** Recipient email address. */
   recipient: string;
   /** Email subject line (optional — set after template rendering in M5). */
@@ -66,7 +63,6 @@ export async function claimNotification(
       data: {
         eventId: input.eventId,
         eventType: input.eventType,
-        notificationType: input.notificationType,
         recipient: input.recipient,
         status: "PENDING",
         attemptCount: 0,

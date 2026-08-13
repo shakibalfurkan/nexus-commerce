@@ -27,8 +27,7 @@ import logger from "../utils/logger.js";
  * live in adapter modules called by function signature.
  *
  * Flow:
- *  1. Look up event in domainEventRegistry → notificationType, templateKey,
- *     recipient, subject.
+ *  1. Look up event in domainEventRegistry → templateKey, recipient, subject.
  *  2. Claim idempotency (create PENDING NotificationLog). Duplicate → skip.
  *  3. Check rate limit (Redis sliding window). Exceeded → mark FAILED, return.
  *  4. Render template (React Email → HTML).
@@ -102,7 +101,6 @@ export class NotificationService {
     const claimInput: ClaimNotificationInput = {
       eventId: event.aggregateId,
       eventType: event.eventName,
-      notificationType: entry.notificationType,
       recipient,
       subject,
       payloadSnapshot: event,
@@ -126,10 +124,7 @@ export class NotificationService {
     try {
       // 3. Check rate limit
       if (this.deps.rateLimiter) {
-        const rateLimitKey = buildRateLimitKey(
-          recipient,
-          entry.notificationType,
-        );
+        const rateLimitKey = buildRateLimitKey(recipient, event.eventName);
         const rateLimitResult = await this.deps.rateLimiter.check(rateLimitKey);
         if (!rateLimitResult.allowed) {
           const { attemptCount, maxRetries } = await markAsFailed(

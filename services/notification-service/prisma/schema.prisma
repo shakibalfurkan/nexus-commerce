@@ -7,28 +7,11 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NotificationLog — Idempotency & delivery tracking table
-//
-// Kafka delivers messages at-least-once, so consumers MUST be idempotent. The
-// `eventId` column (the Kafka envelope's `aggregateId`) has a unique constraint;
-// inserting a duplicate raises a Prisma unique-constraint violation that the
-// service layer treats as "already processed" and skips.
-//
-// The `status` column drives the state machine:
-//   PENDING → SENT  (happy path)
-//   PENDING → FAILED → retried up to `maxRetries` → DLQ
-//
-// `payloadSnapshot` stores the raw validated event so DLQ re-drive and debugging
-// can happen without the original Kafka message.
-// ─────────────────────────────────────────────────────────────────────────────
-
 model NotificationLog {
   id                String             @id @default(uuid())
   /// Idempotency key — the Kafka envelope's per-event `aggregateId` (no `eventId` exists on the wire).
   eventId           String             @unique
   eventType         String
-  notificationType  NotificationType
   recipient         String
   subject           String?
   /// Raw event payload snapshot — enables DLQ re-drive and debugging without the original Kafka event.
@@ -57,7 +40,6 @@ model NotificationLog {
   @@index([status, nextRetryAt])
   @@index([recipient, createdAt])
   @@index([eventType])
-  @@index([notificationType])
   @@map("notification_logs")
 }
 
@@ -93,10 +75,4 @@ enum NotificationStatus {
   SENT
   FAILED
   DLQ
-}
-
-enum NotificationType {
-  EMAIL_VERIFICATION
-  WELCOME
-  PASSWORD_RESET
 }
