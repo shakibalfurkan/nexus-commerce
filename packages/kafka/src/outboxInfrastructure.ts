@@ -3,7 +3,11 @@ import type { Logger } from "@nexus/logger";
 import { OutboxPoller } from "./outboxPoller.js";
 import { OutboxListener } from "./outboxListener.js";
 import { createEventBus } from "./eventBus.js";
-import type { OutboxEventDb, OutboxPollerOptions, TopicResolver } from "./types.js";
+import type {
+  OutboxEventDb,
+  OutboxPollerOptions,
+  TopicResolver,
+} from "./types.js";
 
 /**
  * Everything a service needs to wire the shared outbox to its Kafka producer
@@ -21,11 +25,11 @@ import type { OutboxEventDb, OutboxPollerOptions, TopicResolver } from "./types.
 export interface OutboxInfrastructureDeps {
   /** Service's Prisma client (structural match for {@link OutboxEventDb}). */
   prisma: OutboxEventDb;
-  /** Canonical service name — used for lock identity and DLQ `source`. */
-  serviceName: string;
   /** Kafka client + producer. Null when Kafka is unconfigured (publishing off). */
   kafka: Kafka | null;
   producer: Producer | null;
+  /** Canonical service name — used for locking identity and the DLQ `source`. */
+  serviceName: string;
   /** Service-specific event type → Kafka topic mapping. */
   resolveTopic: TopicResolver;
   /** Shared logger (never console.log). */
@@ -73,7 +77,9 @@ export function createOutboxInfrastructure(
           logger.warn("[OutboxPoller] EventBus not available — cannot publish");
         },
     logger,
-    ...(options !== undefined ? { options } : {}),
+    // exactOptionalPropertyTypes: only attach `options` when actually provided,
+    // so an `undefined` value is never explicitly assigned to an optional prop.
+    ...(options ? { options } : {}),
   });
 
   // WHY the listener exists alongside the poller: NOTIFY is fire-and-forget and
