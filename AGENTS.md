@@ -46,6 +46,10 @@ exhaustion. DB write + event publish → transactional outbox, always. Redis key
 `<service>:<purpose>:<id>`, never generic, always TTL. 5-topic ceiling (Aiven
 free tier) — flag quota impact before adding one.
 
+Outbox delivery: Postgres LISTEN/NOTIFY (primary) + interval poll every 30s
+(fallback safety net — NOTIFY is fire-and-forget, not durable). Shared engine
+in `packages/kafka`, never duplicated per-service.
+
 ## Frontend
 
 Skeleton loading matching real content shape — never a generic spinner (spinners
@@ -71,10 +75,14 @@ mutations, verified webhook signatures, never store raw card data.
 Cross-service DB access · secrets outside env vars · wildcard CORS in prod ·
 disabled auth/rate-limits · infinite retries · non-idempotent financial/Kafka
 mutations · missing DLQ · unescaped HTML · destructive DB/git ops without
-approval · unjustified new dependencies.
+approval · unjustified new dependencies. automatic redrive of DEAD events for payment/order domains (manual admin
+review required — automatic redrive is fine for low-stakes domains only)
 
 ## Workflow
 
 One milestone at a time unless told otherwise. Conventional Commits,
 service-scoped (e.g. `feat(notification): add resend adapter`). ADR in
-`docs/adr/` for boundary, data-ownership, or vendor decisions.
+`docs/adr/` for boundary, data-ownership, or vendor decisions. Never add
+"Co-Authored-By: Claude" or any AI-attribution trailer to commit messages —
+this repo is a job-search portfolio; commit authorship must reflect the
+human author only.
