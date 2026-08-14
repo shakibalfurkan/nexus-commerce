@@ -6,8 +6,10 @@
 ## Current Milestone / Step
 
 **STEP 4 — Migrate services — DONE (all three services).**
-**STEP 5 — Commits — IN PROGRESS (logical buildable chunks).**
-Remaining: review `REVIEW-outbox-kafka.md` gaps all closed; verify final commit state.
+**STEP 5 — Commits — DONE (6 buildable chunks + follow-up dedup chunk).**
+Outbox→`@nexus/kafka` refactor complete: shared package, trigger migrations,
+all three service migrations, `eventName`→`eventType` consistency, B11 logger
+swap, and a dedupe pass that extracted `createOutboxInfrastructure`.
 
 Peer-review `REVIEW-outbox-kafka.md` (B1–B11) fully reconciled. A follow-up
 consistency pass renamed the wire discriminator `eventName` → **`eventType`**
@@ -107,8 +109,37 @@ All four packages type-check clean on the outbox/rename path; `vitest` 10/10.
   seller-profile / shop-address / audit-log / user.dto / auth.ts — out of scope,
   not regressed by this work).
 
+
+## Dedupe pass (follow-up, after user flagged remaining duplicates)
+
+User reported `outboxPoller.ts` / `eventTypes.ts` still present in auth + user
+as "duplicates". Investigation distinguished real duplication from legitimate
+per-service glue:
+
+- **Real duplicate (fixed):** `auth/src/events/outboxPoller.ts` and
+  `user/src/events/outboxPoller.ts` were ~95% identical wiring glue
+  (construct `OutboxPoller` + `OutboxListener` + `createEventBus`, re-export
+  `start`/`stop`). Extracted to a single
+  `createOutboxInfrastructure()` factory in `packages/kafka`
+  (`src/outboxInfrastructure.ts`, exported from the barrel). Both service files
+  are now ~12-line adapters that pass `prisma`, `kafka`/`producer`,
+  `serviceName`, and `resolveTopic`. `server.ts` imports unchanged.
+- **NOT a duplicate (kept):** `eventTypes.ts` per service are domain event
+  *schemas* (service-specific); `outboxWriter.ts` holds the service-specific
+  topic map + Prisma glue; `notification/resilience/backoff.ts` re-implements
+  `calculateBackoff` but with a **different algorithm** (full-jitter random for
+  Resend retries) vs. the shared deterministic outbox backoff — merging would
+  change consumer retry behavior, out of scope. The notification consumer
+  correctly does NOT use the producer-only `OutboxPoller` (it's a consumer).
+- **Stale doc bug (fixed):** `notification/domain-event.schemas.ts` JSDoc
+  example showed `eventName` and referenced the deleted `src/events/eventBus.ts`.
+  Corrected to `eventType` and the current `createEventBus` reference.
+
+**Verification:** `packages/kafka` `tsc --noEmit` clean; vitest **12/12**
+(+2 new factory tests: start/stop delegation + DATABASE_URL guard). auth +
+user outbox path `tsc` clean; notification `tsc` clean.
+
 ## Remaining steps
-- STEP 5: complete the commit sequence in logical chunks (each buildable):
-  (1) shared package + tests, (2) trigger migrations, (3) notification migration,
-  (4) auth migration, (5) user migration + consistency rename + B11. No unbuilt
-  intermediate states.
+- STEP 5: all 6 logical commits landed (shared pkg + tests, trigger migrations,
+  notification, auth, user, docs). Follow-up dedup pass committed as its own
+  chunk. Working tree clean after final commit.

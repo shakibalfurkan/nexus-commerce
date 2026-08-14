@@ -7,15 +7,15 @@ import { z } from "zod";
  * writers). The wire envelope is NOT the `packages/event-contracts` shape:
  *
  *   {
- *     eventName:   "email.verification.otp.sent",
+ *     eventType:   "email.verification.otp.sent",
  *     aggregateId: "<per-event-uuid>",        // idempotency key source
  *     payload:     { ... },
  *     metadata:    { emittedAt, source, version }
  *   }
  *
  * Trace context (`traceparent`) travels in the Kafka message HEADERS, not the
- * JSON body — see each service's `src/events/eventBus.ts`. The body-to-header
- * binding lives in `src/types/kafka-message.types.ts`.
+ * JSON body — see each service's `src/config/kafka.ts` + `createEventBus`
+ * (header binding in `src/types/kafka-message.types.ts`).
  */
 
 // ─── Envelope Metadata ───
