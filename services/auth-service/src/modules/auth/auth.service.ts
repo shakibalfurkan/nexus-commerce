@@ -176,7 +176,7 @@ const registerRequest = async (
   const aggregateId = uuidv5(email, DNS_NAMESPACE);
 
   await emitDomainEvent({
-    eventName: DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
+    eventType: DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
     aggregateId,
     payload: {
       firstName,
@@ -304,7 +304,7 @@ const resendOtp = async (
   const aggregateId = uuidv5(email, DNS_NAMESPACE);
 
   await emitDomainEvent({
-    eventName: DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
+    eventType: DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
     aggregateId,
     payload: {
       firstName,
@@ -567,7 +567,7 @@ const requestPasswordReset = async (
   }
 
   await emitDomainEvent({
-    eventName: DomainEventTypes.PASSWORD_RESET_REQUESTED,
+    eventType: DomainEventTypes.PASSWORD_RESET_REQUESTED,
     aggregateId: credential.id,
     payload: {
       email,
@@ -647,7 +647,7 @@ const provisionSeller = async (credentialId: string): Promise<void> => {
 
   // Emit async event — user-service will consume and create the profile
   await emitDomainEvent({
-    eventName: DomainEventTypes.SELLER_PROFILE_REQUESTED,
+    eventType: DomainEventTypes.SELLER_PROFILE_REQUESTED,
     aggregateId: credential.id,
     payload: {
       userId: credential.id,
@@ -684,7 +684,7 @@ const provisionCustomer = async (credentialId: string): Promise<void> => {
 
   // Emit async event
   await emitDomainEvent({
-    eventName: DomainEventTypes.CUSTOMER_PROFILE_REQUESTED,
+    eventType: DomainEventTypes.CUSTOMER_PROFILE_REQUESTED,
     aggregateId: credential.id,
     payload: {
       userId: credential.id,

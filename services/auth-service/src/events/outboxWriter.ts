@@ -18,8 +18,8 @@ const eventTopicMap: Record<
   "dead_letter.event": KafkaTopics.DLQ,
 };
 
-export function resolveTopic(eventName: string): string {
-  const topic = eventTopicMap[eventName];
+export function resolveTopic(eventType: string): string {
+  const topic = eventTopicMap[eventType];
   if (!topic) {
     return KafkaTopics.DOMAIN_EVENTS;
   }
@@ -41,7 +41,7 @@ export async function writeOutboxEvent(
     data: {
       id,
       aggregateId: event.aggregateId,
-      eventType: event.eventName,
+      eventType: event.eventType,
       payload: event as any,
       traceparent: traceparent ?? null,
       status: "PENDING",

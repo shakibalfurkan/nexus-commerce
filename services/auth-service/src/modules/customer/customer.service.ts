@@ -74,7 +74,7 @@ const customerRegisterRequest = async (
   const aggregateId = uuidv5(email, DNS_NAMESPACE);
 
   await emitDomainEvent({
-    eventName: DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
+    eventType: DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
     aggregateId,
     payload: {
       firstName,

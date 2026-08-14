@@ -5,7 +5,7 @@ import { redisClient } from "./config/redis.js";
 import { producer } from "./config/kafka.js";
 import { disconnectPrisma, prisma } from "./lib/prisma.js";
 import logger from "./utils/logger.js";
-import { startOutboxPoller } from "./events/outboxPoller.js";
+import { startOutboxPoller, stopOutboxPoller } from "./events/outboxPoller.js";
 
 let server: Server;
 
@@ -80,6 +80,7 @@ const shutdown = async (signal: string) => {
       redisClient.quit(),
       producer ? producer.disconnect() : Promise.resolve(),
       disconnectPrisma(),
+      stopOutboxPoller(),
     ]);
 
     logger.info(

@@ -30,7 +30,7 @@ export type TOtpPurpose = (typeof OtpPurpose)[keyof typeof OtpPurpose];
 // ─── Event Payload Schemas (Zod-validated) ───
 
 const EmailVerificationOtpSchema = z.object({
-  eventName: z.literal(DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT),
+  eventType: z.literal(DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT),
   aggregateId: z.string(),
   payload: z.object({
     firstName: z.string(),
@@ -49,7 +49,7 @@ export type EmailVerificationOtpEvent = z.infer<
 >;
 
 const PasswordResetRequestedSchema = z.object({
-  eventName: z.literal(DomainEventTypes.PASSWORD_RESET_REQUESTED),
+  eventType: z.literal(DomainEventTypes.PASSWORD_RESET_REQUESTED),
   aggregateId: z.string(),
   payload: z.object({
     email: z.string(),
@@ -67,7 +67,7 @@ export type PasswordResetRequestedEvent = z.infer<
 >;
 
 const SellerProfileRequestedSchema = z.object({
-  eventName: z.literal(DomainEventTypes.SELLER_PROFILE_REQUESTED),
+  eventType: z.literal(DomainEventTypes.SELLER_PROFILE_REQUESTED),
   aggregateId: z.string(),
   payload: z.object({
     userId: z.string(),
@@ -85,7 +85,7 @@ export type SellerProfileRequestedEvent = z.infer<
 >;
 
 const CustomerProfileRequestedSchema = z.object({
-  eventName: z.literal(DomainEventTypes.CUSTOMER_PROFILE_REQUESTED),
+  eventType: z.literal(DomainEventTypes.CUSTOMER_PROFILE_REQUESTED),
   aggregateId: z.string(),
   payload: z.object({
     userId: z.string(),
@@ -103,7 +103,7 @@ export type CustomerProfileRequestedEvent = z.infer<
 >;
 
 const SellerProfileCreatedSchema = z.object({
-  eventName: z.literal(DomainEventTypes.SELLER_PROFILE_CREATED),
+  eventType: z.literal(DomainEventTypes.SELLER_PROFILE_CREATED),
   aggregateId: z.string(),
   payload: z.object({
     userId: z.string(),
@@ -122,7 +122,7 @@ export type SellerProfileCreatedEvent = z.infer<
 >;
 
 const CustomerProfileCreatedSchema = z.object({
-  eventName: z.literal(DomainEventTypes.CUSTOMER_PROFILE_CREATED),
+  eventType: z.literal(DomainEventTypes.CUSTOMER_PROFILE_CREATED),
   aggregateId: z.string(),
   payload: z.object({
     userId: z.string(),
@@ -141,7 +141,7 @@ export type CustomerProfileCreatedEvent = z.infer<
 >;
 
 // ─── Union Type for All Domain Events ───
-export const DomainEventSchema = z.discriminatedUnion("eventName", [
+export const DomainEventSchema = z.discriminatedUnion("eventType", [
   EmailVerificationOtpSchema,
   PasswordResetRequestedSchema,
   SellerProfileRequestedSchema,

@@ -1,223 +1,76 @@
+import {
+  OutboxPoller,
+  OutboxListener,
+  type OutboxListenerHandlers,
+} from "@nexus/kafka";
 import { prisma } from "../lib/prisma.js";
-import { KafkaTopics } from "../config/kafka.js";
+import { kafka, producer } from "../config/kafka.js";
+import { createEventBus } from "@nexus/kafka";
 import { resolveTopic } from "./outboxWriter.js";
-import { EventBus } from "./eventBus.js";
 import logger from "../utils/logger.js";
+import config from "../config/index.js";
 
-// ─── Types ───
+// ─── Outbox EventBus (publish only — subscribers are per-service consumers) ───
+// Reuses the same Kafka+producer from config; createEventBus.publish rethrows so
+// the poller's retry/DLQ path triggers correctly (fixes the silent false-completion bug).
+const eventBus = kafka && producer ? createEventBus(kafka, producer, logger) : null;
 
-export interface OutboxPollerOptions {
-  pollIntervalMs: number;
-  batchSize: number;
-  baseBackoffMs: number;
-  maxBackoffMs: number;
-  maxRetries: number;
-  lockTimeoutMs: number;
-}
+// ─── Outbox Poller (interval fallback) ───
 
-const DEFAULT_OPTIONS: OutboxPollerOptions = {
-  pollIntervalMs: 1_000,
-  batchSize: 100,
-  baseBackoffMs: 1_000,
-  maxBackoffMs: 60_000,
-  maxRetries: 5,
-  lockTimeoutMs: 30_000,
+const poller = new OutboxPoller({
+  prisma,
+  serviceName: config.serviceName,
+  resolveTopic: (eventType: string) => resolveTopic(eventType),
+  publish: eventBus
+    ? async (params) => eventBus.publish(params)
+    : async () => {
+        logger.warn("[OutboxPoller] EventBus not available — cannot publish");
+      },
+  logger,
+  options: {
+    // Slow safety-net: the OutboxListener is the primary trigger.
+    fallbackPollIntervalMs: 30_000,
+    batchSize: 100,
+    baseBackoffMs: 1_000,
+    maxBackoffMs: 60_000,
+    maxRetries: 5,
+    lockTimeoutMs: 30_000,
+  },
+});
+
+// ─── Outbox Listener (Postgres LISTEN/NOTIFY — primary trigger) ───
+// WHY the listener exists alongside the poller: NOTIFY is fire-and-forget and
+// drops messages sent while disconnected, so the interval fallback is the
+// durability net. The listener receives NEW.id::text from the trigger but
+// IGNORES the payload (B4) — it simply calls poller.handleNotification which
+// triggers a full batch drain.
+
+const listenerHandlers: OutboxListenerHandlers = {
+  onEvent: (eventId) => poller.handleNotification(eventId),
+  onError: (error) => logger.error("[OutboxListener]", error),
 };
 
-let effectiveOptions: OutboxPollerOptions = { ...DEFAULT_OPTIONS };
+const listener = new OutboxListener(
+  {
+    connectionString: process.env.DATABASE_URL!,
+    channel: "outbox_channel",
+    maxReconnectAttempts: 10,
+  },
+  listenerHandlers,
+  logger,
+);
 
-// ─── Poller State ───
+// ─── Public API (same exports as the old file, so server.ts imports unchanged) ───
 
-let isRunning = false;
-let pollInterval: ReturnType<typeof setInterval> | null = null;
-let isBatchProcessing = false;
-
-// ─── Exponential Backoff ───
-
-function calculateBackoff(retryCount: number): number {
-  const delay = effectiveOptions.baseBackoffMs * Math.pow(2, retryCount);
-  return Math.min(delay, effectiveOptions.maxBackoffMs);
-}
-
-// ─── Core Polling Logic ───
-
-async function processNextBatch(): Promise<void> {
-  if (isBatchProcessing) return;
-  isBatchProcessing = true;
-
-  const now = new Date();
-  const lockTimeout = new Date(now.getTime() - effectiveOptions.lockTimeoutMs);
-
-  try {
-    const events = await prisma.outboxEvent.findMany({
-      where: {
-        status: "PENDING",
-        AND: [
-          {
-            OR: [{ lockedAt: null }, { lockedAt: { lt: lockTimeout } }],
-          },
-        ],
-      },
-      orderBy: { createdAt: "asc" },
-      take: effectiveOptions.batchSize,
-    });
-
-    if (events.length === 0) return;
-
-    // Lock claimed events
-    const eventIds = events.map((e) => e.id);
-    await prisma.outboxEvent.updateMany({
-      where: { id: { in: eventIds } },
-      data: {
-        status: "PROCESSING",
-        lockedAt: now,
-        lockedBy: `outbox-poller-${process.pid}`,
-      },
-    });
-
-    // Publish each event to the correct Kafka topic
-    for (const event of events) {
-      try {
-        const topic = resolveTopic(
-          event.eventType,
-        ) as (typeof KafkaTopics)[keyof typeof KafkaTopics];
-
-        await EventBus.publish(
-          topic,
-          event.id,
-          event.payload,
-          event.traceparent ?? undefined,
-        );
-
-        await prisma.outboxEvent.update({
-          where: { id: event.id },
-          data: {
-            status: "COMPLETED",
-            processedAt: new Date(),
-            lockedAt: null,
-            lockedBy: null,
-          },
-        });
-
-        logger.debug(
-          `[OutboxPoller] Event ${event.id} (${event.eventType}) published to ${topic}`,
-        );
-      } catch (error) {
-        await handleFailure(event, error);
-      }
-    }
-  } catch (error) {
-    logger.error("[OutboxPoller] Error processing batch", error);
-  } finally {
-    isBatchProcessing = false;
-  }
-}
-
-async function handleFailure(
-  event: { id: string; retryCount: number; eventType: string },
-  error: unknown,
-): Promise<void> {
-  const newRetryCount = event.retryCount + 1;
-  const errorMessage = error instanceof Error ? error.message : String(error);
-
-  if (newRetryCount >= effectiveOptions.maxRetries) {
-    // Move to DEAD state — Dead Letter Queue
-    await prisma.outboxEvent.update({
-      where: { id: event.id },
-      data: {
-        status: "DEAD",
-        retryCount: newRetryCount,
-        lastError: errorMessage,
-        lockedAt: null,
-        lockedBy: null,
-      },
-    });
-
-    logger.error(
-      `[OutboxPoller] Event ${event.id} (${event.eventType}) moved to DEAD after ${newRetryCount} retries. Error: ${errorMessage}`,
-    );
-
-    // Publish to DLQ topic for downstream alerting
-    await publishDeadLetterEvent(event.id, event.eventType, errorMessage);
-  } else {
-    // Exponential backoff — release the lock for retry
-    const backoffMs = calculateBackoff(newRetryCount);
-
-    await prisma.outboxEvent.update({
-      where: { id: event.id },
-      data: {
-        status: "PENDING",
-        retryCount: newRetryCount,
-        lastError: errorMessage,
-        lockedAt: null,
-        lockedBy: null,
-      },
-    });
-
-    logger.warn(
-      `[OutboxPoller] Event ${event.id} (${event.eventType}) failed (retry ${newRetryCount}/${effectiveOptions.maxRetries}). Next retry in ${backoffMs}ms. Error: ${errorMessage}`,
-    );
-  }
-}
-
-async function publishDeadLetterEvent(
-  originalEventId: string,
-  originalEventType: string,
-  errorMessage: string,
-): Promise<void> {
-  try {
-    await EventBus.publish(KafkaTopics.DLQ, `dlq-${originalEventId}`, {
-      eventName: "dead_letter.event",
-      aggregateId: originalEventId,
-      payload: {
-        originalEventId,
-        originalEventType,
-        error: errorMessage,
-        failedAt: new Date().toISOString(),
-      },
-      metadata: {
-        emittedAt: new Date().toISOString(),
-        source: "user-service-outbox-poller",
-        version: 1,
-      },
-    });
-  } catch (dlqError) {
-    logger.error(
-      `[OutboxPoller] Failed to publish DLQ event for ${originalEventId}`,
-      dlqError,
-    );
-  }
-}
-
-// ─── Public API ───
-
-export async function startOutboxPoller(
-  options: Partial<OutboxPollerOptions> = {},
-): Promise<void> {
-  if (isRunning) {
-    logger.warn("[OutboxPoller] Already running");
-    return;
-  }
-
-  effectiveOptions = { ...DEFAULT_OPTIONS, ...options };
-  isRunning = true;
-
-  logger.info(
-    `[OutboxPoller] Started. Interval: ${effectiveOptions.pollIntervalMs}ms, Batch size: ${effectiveOptions.batchSize}`,
-  );
-
-  await processNextBatch();
-  pollInterval = setInterval(processNextBatch, effectiveOptions.pollIntervalMs);
-  pollInterval.unref();
+export async function startOutboxPoller(): Promise<void> {
+  // Start the listener first so it is subscribed before any initial drain races.
+  await listener.start();
+  await poller.start();
+  logger.info("[Outbox] Listener + poller started");
 }
 
 export async function stopOutboxPoller(): Promise<void> {
-  isRunning = false;
-
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
-
-  logger.info("[OutboxPoller] Stopped");
+  await listener.stop();
+  await poller.stop();
+  logger.info("[Outbox] Listener + poller stopped");
 }
