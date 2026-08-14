@@ -49,7 +49,7 @@ export type TDomainEventName = z.infer<typeof DomainEventNameSchema>;
 // ─── Individual Event Schemas (payloads intentionally strict — boundary) ───
 
 export const EmailVerificationOtpEventSchema = z.object({
-  eventName: z.literal("email.verification.otp.sent"),
+  eventType: z.literal("email.verification.otp.sent"),
   aggregateId: z.uuid(),
   payload: z.object({
     firstName: z.string(),
@@ -64,7 +64,7 @@ export type EmailVerificationOtpEvent = z.infer<
 >;
 
 export const PasswordResetRequestedEventSchema = z.object({
-  eventName: z.literal("password.reset.requested"),
+  eventType: z.literal("password.reset.requested"),
   aggregateId: z.uuid(),
   payload: z.object({
     email: z.email(),
@@ -78,7 +78,7 @@ export type PasswordResetRequestedEvent = z.infer<
 >;
 
 export const UserRegisteredEventSchema = z.object({
-  eventName: z.literal("user.registered"),
+  eventType: z.literal("user.registered"),
   aggregateId: z.uuid(),
   payload: z.object({
     userId: z.uuid(),
@@ -95,7 +95,7 @@ export type UserRegisteredEvent = z.infer<typeof UserRegisteredEventSchema>;
 
 // ─── Discriminated Union (Kafka boundary validation) ───
 
-export const DomainEventSchema = z.discriminatedUnion("eventName", [
+export const DomainEventSchema = z.discriminatedUnion("eventType", [
   EmailVerificationOtpEventSchema,
   PasswordResetRequestedEventSchema,
   UserRegisteredEventSchema,
@@ -111,14 +111,14 @@ export type TDomainEvent = z.infer<typeof DomainEventSchema>;
  * missing field is a compile error rather than a runtime surprise.
  */
 type TDomainEventRegistry = {
-  [K in TDomainEvent["eventName"]]: {
+  [K in TDomainEvent["eventType"]]: {
     /** Template filename (no extension) — resolves into src/templates/. */
     templateKey: string;
     extractRecipient: (
-      event: Extract<TDomainEvent, { eventName: K }>,
+      event: Extract<TDomainEvent, { eventType: K }>,
     ) => string;
     /** Email subject line for this event type. */
-    getSubject: (event: Extract<TDomainEvent, { eventName: K }>) => string;
+    getSubject: (event: Extract<TDomainEvent, { eventType: K }>) => string;
   };
 };
 
@@ -149,13 +149,13 @@ export const domainEventRegistry = {
  * silently falling through scattered `switch` cases.
  */
 export function getEventRegistryEntry(
-  eventName: TDomainEvent["eventName"],
-): (typeof domainEventRegistry)[TDomainEvent["eventName"]] {
-  return domainEventRegistry[eventName];
+  eventType: TDomainEvent["eventType"],
+): (typeof domainEventRegistry)[TDomainEvent["eventType"]] {
+  return domainEventRegistry[eventType];
 }
 
 export function isHandledDomainEvent(
-  eventName: string,
-): eventName is TDomainEvent["eventName"] {
-  return eventName in domainEventRegistry;
+  eventType: string,
+): eventType is TDomainEvent["eventType"] {
+  return eventType in domainEventRegistry;
 }

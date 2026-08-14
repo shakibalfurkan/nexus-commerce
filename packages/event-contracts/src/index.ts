@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-// ─── Standard Event Envelope (per .clinerules Section 6) ───
+export const KafkaTopics = {
+  DOMAIN_EVENTS: "domain-events",
+  DLQ: "dead-letter-queue",
+} as const;
+
+// ─── Standard Event Envelope ───
 
 export const EventEnvelopeSchema = z.object({
   eventId: z.string().uuid(),
@@ -53,8 +58,8 @@ export type TDomainEventType =
 // auth-service events
 export const EmailVerificationOtpEventSchema = z.object({
   eventType: z.literal(DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT),
-  eventVersion: z.literal(1),
   producer: z.literal("auth-service"),
+  aggregateId: z.uuid(),
   payload: z.object({
     firstName: z.string(),
     email: z.string(),

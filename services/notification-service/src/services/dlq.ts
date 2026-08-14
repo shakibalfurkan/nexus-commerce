@@ -1,27 +1,14 @@
 import { prisma } from "../lib/prisma.js";
 import { Prisma } from "../generated/prisma/client.js";
-import { producer, KafkaTopics } from "../config/kafka.js";
+import { producer } from "../config/kafka.js";
+import { KafkaTopics } from "@nexus/event-contracts";
 import logger from "../utils/logger.js";
-
-/**
- * DLQ Handler — Routes exhausted notifications to the Dead Letter Queue.
- *
- * After `maxRetries` failed attempts, the notification is:
- * 1. Updated to `DLQ` status in `NotificationLog`.
- * 2. Persisted in the `DeadLetterEntry` table (survives broker retention
- *    expiry, supports manual re-drive via an admin tool).
- * 3. Published to the Kafka `dead-letter-queue` topic for downstream
- *    alerting/re-drive consumers.
- *
- * Never silently drops a message (`.clinerules` §6).
- */
 
 export interface RouteToDlqInput {
   logId: string;
   eventId: string;
   eventType: string;
   recipient: string;
-  /** Raw event payload for DLQ re-drive and debugging. */
   payload: unknown;
   failureReason: string;
   attemptCount: number;

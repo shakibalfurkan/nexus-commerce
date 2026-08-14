@@ -82,15 +82,15 @@ export class NotificationService {
     const { event, traceparent, correlationId } = message;
 
     // 1. Look up event in registry
-    if (!isHandledDomainEvent(event.eventName)) {
+    if (!isHandledDomainEvent(event.eventType)) {
       logger.warn("Unhandled domain event", {
-        eventName: event.eventName,
+        eventType: event.eventType,
         aggregateId: event.aggregateId,
       });
       return { status: "skipped", reason: "unhandled" };
     }
 
-    const entry = getEventRegistryEntry(event.eventName);
+    const entry = getEventRegistryEntry(event.eventType);
     // TypeScript can't verify the correlated-union at this call site
     // (https://github.com/microsoft/TypeScript/issues/30581). The registry
     // guarantees the correct function is called for the correct event type.
@@ -100,7 +100,7 @@ export class NotificationService {
     // 2. Claim idempotency — throws on non-duplicate DB errors (before log)
     const claimInput: ClaimNotificationInput = {
       eventId: event.aggregateId,
-      eventType: event.eventName,
+      eventType: event.eventType,
       recipient,
       subject,
       payloadSnapshot: event,
@@ -113,7 +113,7 @@ export class NotificationService {
     if (claimResult.status === "duplicate") {
       logger.info("Duplicate event skipped", {
         eventId: event.aggregateId,
-        eventType: event.eventName,
+        eventType: event.eventType,
       });
       return { status: "skipped", reason: "duplicate" };
     }
@@ -124,7 +124,7 @@ export class NotificationService {
     try {
       // 3. Check rate limit
       if (this.deps.rateLimiter) {
-        const rateLimitKey = buildRateLimitKey(recipient, event.eventName);
+        const rateLimitKey = buildRateLimitKey(recipient, event.eventType);
         const rateLimitResult = await this.deps.rateLimiter.check(rateLimitKey);
         if (!rateLimitResult.allowed) {
           const { attemptCount, maxRetries } = await markAsFailed(
@@ -137,7 +137,7 @@ export class NotificationService {
             await routeToDlq({
               logId,
               eventId: event.aggregateId,
-              eventType: event.eventName,
+              eventType: event.eventType,
               recipient,
               payload: event,
               failureReason: "Rate limit exceeded — max retries exhausted",
@@ -188,7 +188,7 @@ export class NotificationService {
       logger.info("Notification sent successfully", {
         logId,
         eventId: event.aggregateId,
-        eventType: event.eventName,
+        eventType: event.eventType,
         recipient,
         providerMessageId: sendResult.messageId,
       });
@@ -210,7 +210,7 @@ export class NotificationService {
         await routeToDlq({
           logId,
           eventId: event.aggregateId,
-          eventType: event.eventName,
+          eventType: event.eventType,
           recipient,
           payload: event,
           failureReason: errorMessage,
@@ -223,7 +223,7 @@ export class NotificationService {
       logger.error("Notification processing failed", {
         logId,
         eventId: event.aggregateId,
-        eventType: event.eventName,
+        eventType: event.eventType,
         error: errorMessage,
         attemptCount,
         maxRetries,
