@@ -4,6 +4,11 @@ import type { TDomainEvent, TNotificationEvent } from "./eventTypes.js";
 import { KafkaTopics } from "../config/kafka.js";
 
 // ─── Topic Router ───
+// All domain + notification events publish to DOMAIN_EVENTS; DLQ events to DLQ.
+// The `COMMANDS`/`NOTIFICATIONS` topic keys were removed: they referenced
+// non-existent KafkaTopics (KafkaTopics only defines DOMAIN_EVENTS + DLQ in
+// @nexus/event-contracts) and the corresponding events never had a registered
+// producer schema — dead config.
 const eventTopicMap: Record<
   string,
   (typeof KafkaTopics)[keyof typeof KafkaTopics]
@@ -20,15 +25,11 @@ const eventTopicMap: Record<
   "user.unlocked": KafkaTopics.DOMAIN_EVENTS,
   "order.placed": KafkaTopics.DOMAIN_EVENTS,
   "payment.succeeded": KafkaTopics.DOMAIN_EVENTS,
-  "generate.pdf_invoice": KafkaTopics.COMMANDS,
-  "sync.user_to_crm": KafkaTopics.COMMANDS,
-  "email.send_welcome": KafkaTopics.NOTIFICATIONS,
-  "email.send_otp": KafkaTopics.NOTIFICATIONS,
   "dead_letter.event": KafkaTopics.DLQ,
 };
 
-export function resolveTopic(eventName: string): string {
-  const topic = eventTopicMap[eventName];
+export function resolveTopic(eventType: string): string {
+  const topic = eventTopicMap[eventType];
   if (!topic) {
     return KafkaTopics.DOMAIN_EVENTS;
   }
@@ -48,7 +49,7 @@ export async function writeOutboxEvent(
     data: {
       id,
       aggregateId: event.aggregateId,
-      eventType: event.eventName,
+      eventType: event.eventType,
       payload: event as any,
       traceparent: traceparent ?? null,
       status: "PENDING",

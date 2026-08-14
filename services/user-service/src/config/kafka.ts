@@ -1,5 +1,11 @@
 import { createKafkaClient, type Kafka, type Producer } from "@nexus/kafka";
+import { createLogger } from "@nexus/logger";
 import config from "./index.js";
+
+const logger = createLogger({
+  serviceName: config.serviceName,
+  node_env: config.node_env,
+});
 
 const { broker, username, password } = config.kafka;
 
@@ -22,7 +28,7 @@ if (broker && username && password) {
   kafka = client.kafka;
   producer = client.producer;
 } else {
-  console.warn(
+  logger.warn(
     "Kafka credentials not configured — event publishing will be disabled.",
   );
 }

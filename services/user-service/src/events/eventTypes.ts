@@ -40,7 +40,7 @@ export type TNotificationEventType =
 // ─── Event Payload Schemas (Zod-validated) ───
 
 export const UserCreatedEventSchema = z.object({
-  eventName: z.literal(DomainEventTypes.USER_REGISTERED),
+  eventType: z.literal(DomainEventTypes.USER_REGISTERED),
   aggregateId: z.uuid(),
   payload: z.object({
     userId: z.uuid(),
@@ -60,7 +60,7 @@ export const UserCreatedEventSchema = z.object({
 export type UserCreatedEvent = z.infer<typeof UserCreatedEventSchema>;
 
 export const UserDeletedEventSchema = z.object({
-  eventName: z.literal(DomainEventTypes.USER_DELETED),
+  eventType: z.literal(DomainEventTypes.USER_DELETED),
   aggregateId: z.uuid(),
   payload: z.object({
     userId: z.uuid(),
@@ -76,7 +76,7 @@ export const UserDeletedEventSchema = z.object({
 export type UserDeletedEvent = z.infer<typeof UserDeletedEventSchema>;
 
 export const UserHardDeletedEventSchema = z.object({
-  eventName: z.literal(DomainEventTypes.USER_HARD_DELETED),
+  eventType: z.literal(DomainEventTypes.USER_HARD_DELETED),
   aggregateId: z.uuid(),
   payload: z.object({
     userId: z.uuid(),
@@ -92,7 +92,7 @@ export const UserHardDeletedEventSchema = z.object({
 export type UserHardDeletedEvent = z.infer<typeof UserHardDeletedEventSchema>;
 
 export const UserRestoredEventSchema = z.object({
-  eventName: z.literal(DomainEventTypes.USER_RESTORED),
+  eventType: z.literal(DomainEventTypes.USER_RESTORED),
   aggregateId: z.uuid(),
   payload: z.object({
     userId: z.uuid(),
@@ -108,7 +108,7 @@ export const UserRestoredEventSchema = z.object({
 export type UserRestoredEvent = z.infer<typeof UserRestoredEventSchema>;
 
 // ─── Union Type for All Domain Events ───
-export const DomainEventSchema = z.discriminatedUnion("eventName", [
+export const DomainEventSchema = z.discriminatedUnion("eventType", [
   UserCreatedEventSchema,
   UserDeletedEventSchema,
   UserHardDeletedEventSchema,
@@ -120,7 +120,7 @@ export type TDomainEvent = z.infer<typeof DomainEventSchema>;
 // ─── Notification Event Schemas ───
 
 export const UserWelcomeNotificationSchema = z.object({
-  eventName: z.literal(NotificationTypes.EMAIL_SEND_WELCOME),
+  eventType: z.literal(NotificationTypes.EMAIL_SEND_WELCOME),
   aggregateId: z.uuid(),
   payload: z.object({
     userName: z.string(),
@@ -138,7 +138,7 @@ export type UserWelcomeNotification = z.infer<
 >;
 
 export const SendOtpNotificationSchema = z.object({
-  eventName: z.literal(NotificationTypes.EMAIL_SEND_OTP),
+  eventType: z.literal(NotificationTypes.EMAIL_SEND_OTP),
   aggregateId: z.uuid(),
   payload: z.object({
     reason: z.enum(["email-verification", "auth-verification"]),
@@ -157,7 +157,7 @@ export const SendOtpNotificationSchema = z.object({
 export type SendOtpNotification = z.infer<typeof SendOtpNotificationSchema>;
 
 // ─── Union Type for All Notification Events ───
-export const NotificationEventSchema = z.discriminatedUnion("eventName", [
+export const NotificationEventSchema = z.discriminatedUnion("eventType", [
   UserWelcomeNotificationSchema,
   SendOtpNotificationSchema,
 ]);

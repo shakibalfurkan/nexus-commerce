@@ -95,7 +95,7 @@ export async function createUserProfile(
     });
 
     await emitDomainEvent(tx, {
-      eventName: DomainEventTypes.USER_REGISTERED,
+      eventType: DomainEventTypes.USER_REGISTERED,
       aggregateId: user.id,
       payload: {
         userId: user.id,
