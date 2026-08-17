@@ -1,10 +1,10 @@
-import type { Kafka, Producer } from "kafkajs";
 import type { Logger } from "@nexus/logger";
 import { OutboxPoller } from "./outboxPoller.js";
 import { OutboxListener } from "./outboxListener.js";
-import { createEventBus } from "./eventBus.js";
+import type { EventBus } from "./eventBus.js";
 import type {
   OutboxEventDb,
+  OutboxPublishParams,
   OutboxPollerOptions,
   TopicResolver,
 } from "./types.js";
@@ -25,9 +25,13 @@ import type {
 export interface OutboxInfrastructureDeps {
   /** Service's Prisma client (structural match for {@link OutboxEventDb}). */
   prisma: OutboxEventDb;
-  /** Kafka client + producer. Null when Kafka is unconfigured (publishing off). */
-  kafka: Kafka | null;
-  producer: Producer | null;
+  /**
+   * The service's single EventBus (constructed once in its
+   * `src/events/eventBus.ts`). Null when Kafka is unconfigured (publishing off).
+   * The poller publishes through this instance so there is exactly one
+   * EventBus per service — never a second one constructed here.
+   */
+  eventBus: EventBus | null;
   /** Canonical service name — used for locking identity and the DLQ `source`. */
   serviceName: string;
   /** Service-specific event type → Kafka topic mapping. */
@@ -53,8 +57,7 @@ export function createOutboxInfrastructure(
   const {
     prisma,
     serviceName,
-    kafka,
-    producer,
+    eventBus,
     resolveTopic,
     logger,
     options,
@@ -62,20 +65,21 @@ export function createOutboxInfrastructure(
     maxReconnectAttempts = 10,
   } = deps;
 
-  // Reuses the same Kafka producer from config; createEventBus.publish rethrows
-  // so the poller's retry/DLQ path triggers (fixes the silent false-completion bug).
-  const eventBus =
-    kafka && producer ? createEventBus(kafka, producer, logger) : null;
+  // Publish through the service's single EventBus instance. EventBus.publish
+  // rethrows on failure so the poller's retry/DLQ path triggers (fixes the
+  // silent false-completion bug). When Kafka is unconfigured, publish is a
+  // logged no-op so the poller never silently drops events.
+  const publish = eventBus
+    ? (params: OutboxPublishParams) => eventBus.publish(params)
+    : async () => {
+        logger.warn("[OutboxPoller] EventBus not available — cannot publish");
+      };
 
   const poller = new OutboxPoller({
     prisma,
     serviceName,
     resolveTopic,
-    publish: eventBus
-      ? (params) => eventBus.publish(params)
-      : async () => {
-          logger.warn("[OutboxPoller] EventBus not available — cannot publish");
-        },
+    publish,
     logger,
     // exactOptionalPropertyTypes: only attach `options` when actually provided,
     // so an `undefined` value is never explicitly assigned to an optional prop.

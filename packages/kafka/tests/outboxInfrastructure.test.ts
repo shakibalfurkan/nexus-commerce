@@ -14,8 +14,6 @@ const noopLog: Logger = {
 };
 
 const fakePrisma = {} as unknown as OutboxEventDb;
-const fakeKafka = {} as never;
-const fakeProducer = {} as never;
 
 const resolveTopic = (eventType: string) => `topic-for-${eventType}`;
 
@@ -44,8 +42,7 @@ describe("createOutboxInfrastructure", () => {
     const infra = createOutboxInfrastructure({
       prisma: fakePrisma,
       serviceName: "auth-service",
-      kafka: fakeKafka,
-      producer: fakeProducer,
+      eventBus: null,
       resolveTopic,
       logger: noopLog,
     });
@@ -64,8 +61,7 @@ describe("createOutboxInfrastructure", () => {
       createOutboxInfrastructure({
         prisma: fakePrisma,
         serviceName: "auth-service",
-        kafka: fakeKafka,
-        producer: fakeProducer,
+        eventBus: null,
         resolveTopic,
         logger: noopLog,
       }),
