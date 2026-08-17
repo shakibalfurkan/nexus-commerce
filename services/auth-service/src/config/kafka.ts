@@ -29,17 +29,8 @@ if (broker && username && password) {
   );
 }
 
-/**
- * Gracefully disconnect the Kafka producer (called on shutdown).
- */
-export async function disconnectKafkaProducer(): Promise<void> {
-  if (producer) {
-    try {
-      await producer.disconnect();
-    } catch (err) {
-      logger.error("Error disconnecting Kafka producer:", err);
-    }
-  }
-}
+// NOTE: no `disconnectKafkaProducer` here. The service's EventBus
+// (`src/events/eventBus.ts`) owns the producer, so `eventBus.disconnect()`
+// in `server.ts` is the single shutdown path.
 
 export { kafka, producer, KafkaTopics };

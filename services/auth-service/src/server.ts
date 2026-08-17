@@ -2,7 +2,7 @@ import { createServer, type Server } from "http";
 import { createApp } from "./app.js";
 import config from "./config/index.js";
 import { redisClient } from "./config/redis.js";
-import { producer } from "./config/kafka.js";
+import { eventBus } from "./events/eventBus.js";
 import { disconnectPrisma, prisma } from "./lib/prisma.js";
 import logger from "./utils/logger.js";
 import { startOutboxPoller, stopOutboxPoller } from "./events/outboxPoller.js";
@@ -22,9 +22,10 @@ async function main(): Promise<void> {
     await redisClient.ping();
     logger.info("Redis Database handshake verified successfully.");
 
-    // Connect Kafka producer once at startup
-    if (producer) {
-      await producer.connect();
+    // Connect the producer once at startup through the service's EventBus, so
+    // a broker misconfiguration fails fast here rather than on first publish.
+    if (eventBus) {
+      await eventBus.connect();
       logger.info("Kafka producer connected successfully.");
 
       // Start the outbox poller to process pending events
@@ -78,7 +79,7 @@ const shutdown = async (signal: string) => {
     logger.info("Closing stateful infrastructure channels...");
     await Promise.allSettled([
       redisClient.quit(),
-      producer ? producer.disconnect() : Promise.resolve(),
+      eventBus ? eventBus.disconnect() : Promise.resolve(),
       disconnectPrisma(),
       stopOutboxPoller(),
     ]);
