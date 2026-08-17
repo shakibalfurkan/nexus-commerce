@@ -3,8 +3,7 @@ import config from "./config/index.js";
 import { startNotificationPipeline } from "./container.js";
 import { disconnectRedis } from "./lib/redis.js";
 import { disconnectPrisma } from "./lib/prisma.js";
-import { disconnectKafkaProducer } from "./config/kafka.js";
-import { disconnectKafkaConsumer } from "./events/kafka-consumer.js";
+import { eventBus } from "./events/eventBus.js";
 import logger from "./utils/logger.js";
 
 const port = process.env.PORT || config.port || "3000";
@@ -26,8 +25,11 @@ async function shutdown(signal: string): Promise<void> {
   forceExit.unref();
 
   try {
-    await disconnectKafkaConsumer();
-    await disconnectKafkaProducer();
+    // One EventBus owns both the consumer and the producer, so a single
+    // disconnect drains both (previously two separate helpers).
+    if (eventBus) {
+      await eventBus.disconnect();
+    }
     await disconnectRedis();
     await disconnectPrisma();
     logger.info("Graceful shutdown complete");

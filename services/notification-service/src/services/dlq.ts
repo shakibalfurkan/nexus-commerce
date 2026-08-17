@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { Prisma } from "../generated/prisma/client.js";
-import { producer } from "../config/kafka.js";
+import { eventBus } from "../events/eventBus.js";
 import { KafkaTopics } from "@nexus/event-contracts";
 import logger from "../utils/logger.js";
 
@@ -44,23 +44,21 @@ export async function routeToDlq(input: RouteToDlqInput): Promise<void> {
     },
   });
 
-  // 3. Publish to Kafka DLQ topic (if producer is available)
-  if (producer) {
+  // 3. Publish to Kafka DLQ topic (if the EventBus is available).
+  // NOTE: `value` is the plain object — EventBus.publish serializes it, so
+  // passing a pre-stringified payload here would double-encode the message.
+  if (eventBus) {
     try {
-      await producer.send({
+      await eventBus.publish({
         topic: KafkaTopics.DLQ,
-        messages: [
-          {
-            key: input.eventId,
-            value: JSON.stringify({
-              eventId: input.eventId,
-              eventType: input.eventType,
-              failureReason: input.failureReason,
-              attemptCount: input.attemptCount,
-              recipient: input.recipient,
-            }),
-          },
-        ],
+        key: input.eventId,
+        value: {
+          eventId: input.eventId,
+          eventType: input.eventType,
+          failureReason: input.failureReason,
+          attemptCount: input.attemptCount,
+          recipient: input.recipient,
+        },
       });
     } catch (error) {
       // Don't fail the DLQ routing if Kafka publish fails — the DB entry
@@ -134,20 +132,21 @@ export async function routePoisonMessage(
     },
   });
 
-  if (producer) {
+  // `value` is a plain object — EventBus.publish serializes it (no manual
+  // JSON.stringify, which would double-encode).
+  if (eventBus) {
     try {
-      await producer.send({
+      await eventBus.publish({
         topic: KafkaTopics.DLQ,
-        messages: [
-          {
-            key: input.dedupeKey,
-            value: JSON.stringify({
-              eventId: input.dedupeKey,
-              failureReason: input.failureReason,
-              rawPayload: input.rawPayload,
-            }),
-          },
-        ],
+        key: input.dedupeKey,
+        value: {
+          eventId: input.dedupeKey,
+          failureReason: input.failureReason,
+          rawPayload: input.rawPayload,
+        },
+        ...(input.traceparent !== undefined
+          ? { traceparent: input.traceparent }
+          : {}),
       });
     } catch (error) {
       // DB entry is the source of truth — Kafka publish failure must not
