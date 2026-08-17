@@ -112,7 +112,10 @@ export class OutboxPoller {
       try {
         await this.pendingBatch;
       } catch (error) {
-        this.logger.warn("[OutboxPoller] In-flight batch failed during stop", error);
+        this.logger.warn(
+          "[OutboxPoller] In-flight batch failed during stop",
+          error,
+        );
       }
     }
     this.logger.info("[OutboxPoller] Stopped");

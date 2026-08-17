@@ -171,9 +171,12 @@ export class OutboxPublishError extends Error {
 
   constructor(eventId: string, eventType: string, cause: unknown) {
     const message = cause instanceof Error ? cause.message : String(cause);
-    super(`Outbox publish failed for event ${eventId} (${eventType}): ${message}`, {
-      cause,
-    });
+    super(
+      `Outbox publish failed for event ${eventId} (${eventType}): ${message}`,
+      {
+        cause,
+      },
+    );
     this.name = "OutboxPublishError";
     this.eventId = eventId;
     this.eventType = eventType;

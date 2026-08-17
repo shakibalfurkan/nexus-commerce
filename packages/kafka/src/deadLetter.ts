@@ -8,7 +8,11 @@ export interface DeadLetterPublishParams {
   eventType: string;
   errorMessage: string;
   /** Kafka publisher the service already wired (topic comes from the contracts). */
-  publish: (params: { topic: string; key: string; value: unknown }) => Promise<void>;
+  publish: (params: {
+    topic: string;
+    key: string;
+    value: unknown;
+  }) => Promise<void>;
   logger: Logger;
 }
 
@@ -34,6 +38,7 @@ export async function publishDeadLetterEvent(
   params: DeadLetterPublishParams,
 ): Promise<void> {
   const now = new Date().toISOString();
+
   const value = {
     // Canonical discriminator name is `eventType` (matches the outbox DB
     // column and producer wire format) — never `eventName`.
