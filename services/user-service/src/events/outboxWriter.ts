@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type { PrismaTransaction } from "../types/database.types.js";
 import type { TDomainEvent, TNotificationEvent } from "./eventTypes.js";
-import { KafkaTopics } from "../config/kafka.js";
+import { KafkaTopics } from "@nexus/event-contracts";
 
 // ─── Topic Router ───
 // All domain + notification events publish to DOMAIN_EVENTS; DLQ events to DLQ.

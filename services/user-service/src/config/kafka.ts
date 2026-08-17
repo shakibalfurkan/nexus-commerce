@@ -9,11 +9,6 @@ const logger = createLogger({
 
 const { broker, username, password } = config.kafka;
 
-export const KafkaTopics = {
-  DOMAIN_EVENTS: "domain-events",
-  DLQ: "dead-letter-queue",
-} as const;
-
 let kafka: Kafka | null = null;
 let producer: Producer | null = null;
 

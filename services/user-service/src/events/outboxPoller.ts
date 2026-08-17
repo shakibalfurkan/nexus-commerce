@@ -1,19 +1,18 @@
 import { createOutboxInfrastructure } from "@nexus/kafka";
 import { prisma } from "../lib/prisma.js";
-import { kafka, producer } from "../config/kafka.js";
+import { eventBus } from "./eventBus.js";
 import { resolveTopic } from "./outboxWriter.js";
 import logger from "../utils/logger.js";
 
 // All outbox wiring (EventBus + OutboxPoller + OutboxListener) now lives in the
 // shared @nexus/kafka package. This file is a thin per-service adapter: it
-// supplies the Prisma client, the Kafka client/producer, the canonical service
-// name, and the event-type → topic resolver. start/stop are re-exported with
-// the same names so server.ts is unchanged.
+// supplies the Prisma client, its single EventBus instance, the canonical
+// service name, and the event-type → topic resolver. start/stop are
+// re-exported with the same names so server.ts is unchanged.
 const outbox = createOutboxInfrastructure({
   prisma,
   serviceName: "user-service",
-  kafka,
-  producer,
+  eventBus,
   resolveTopic,
   logger,
 });
