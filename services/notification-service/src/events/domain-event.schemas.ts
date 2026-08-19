@@ -1,5 +1,5 @@
 import { z } from "zod";
-
+import { AuthDomainEventTypes, UserDomainEventTypes } from "@nexus/event-contracts";
 /**
  * Wire-accurate Kafka event schemas for the `domain-events` topic.
  *
@@ -33,9 +33,9 @@ export type TEventEnvelopeMetadata = z.infer<
 // ─── Domain Event Names ───
 
 export const DomainEventNames = [
-  "email.verification.otp.sent",
-  "password.reset.requested",
-  "user.registered",
+  AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
+  AuthDomainEventTypes.PASSWORD_RESET_REQUESTED,
+  UserDomainEventTypes.USER_REGISTERED,
 ] as const;
 
 /**
@@ -123,19 +123,19 @@ type TDomainEventRegistry = {
 };
 
 export const domainEventRegistry = {
-  "email.verification.otp.sent": {
+  [AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT]: {
     templateKey: "email-verification",
     extractRecipient: (event: EmailVerificationOtpEvent) => event.payload.email,
     getSubject: (event: EmailVerificationOtpEvent) =>
       `Your Nexus verification code is ${event.payload.otp}`,
   },
-  "password.reset.requested": {
+  [AuthDomainEventTypes.PASSWORD_RESET_REQUESTED]: {
     templateKey: "password-reset",
     extractRecipient: (event: PasswordResetRequestedEvent) =>
       event.payload.email,
     getSubject: () => "Reset your Nexus password",
   },
-  "user.registered": {
+  [UserDomainEventTypes.USER_REGISTERED]: {
     templateKey: "welcome",
     extractRecipient: (event: UserRegisteredEvent) => event.payload.email,
     getSubject: (event: UserRegisteredEvent) =>
