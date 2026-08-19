@@ -46,12 +46,15 @@ Standardize on a **single, uniform interval poller** across every service.
 - Remove `OutboxListener` and the LISTEN/NOTIFY wiring entirely.
 - Remove the NOTIFY trigger migration (`notify_outbox_event()` +
   `outbox_event_notify`) from every service.
-- Every service drains the outbox with `OutboxPoller` on a **single fixed
-  interval of 5 seconds** (`DEFAULT_OUTBOX_POLLER_OPTIONS.fallbackPollIntervalMs
-  = 5000`), with **no per-service overrides** unless a service has a documented,
-  reviewed reason to differ.
-- `createOutboxInfrastructure()` keeps the clean shared wiring: it constructs
-  and starts/stops only the poller. No `connectionString`/listener arguments.
+- Every service constructs `OutboxPoller` directly and passes a `publish`
+  function it builds itself (wrapping its own `EventBus.publish`, with a
+  logged no-op fallback when Kafka is unconfigured). There is no shared
+  `createOutboxInfrastructure` wrapper — the package exports `OutboxPoller` as
+  the public outbox API.
+- Interval is **single fixed 5 seconds**
+  (`DEFAULT_OUTBOX_POLLER_OPTIONS.fallbackPollIntervalMs = 5000`), with **no
+  per-service overrides** unless a service has a documented, reviewed reason
+  to differ.
 
 Polling is the only trigger, applied consistently regardless of DB provider.
 
