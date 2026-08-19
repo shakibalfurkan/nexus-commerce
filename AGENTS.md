@@ -46,9 +46,10 @@ exhaustion. DB write + event publish → transactional outbox, always. Redis key
 `<service>:<purpose>:<id>`, never generic, always TTL. 5-topic ceiling (Aiven
 free tier) — flag quota impact before adding one.
 
-Outbox delivery: Postgres LISTEN/NOTIFY (primary) + interval poll every 30s
-(fallback safety net — NOTIFY is fire-and-forget, not durable). Shared engine
-in `packages/kafka`, never duplicated per-service.
+Outbox delivery: interval poller, 5s, uniform across all services regardless of
+DB provider (CockroachDB does not support Postgres LISTEN/NOTIFY, so polling is
+used consistently rather than a mixed strategy). Shared engine in
+`packages/kafka`, never duplicated per-service.
 
 ## Frontend
 
