@@ -24,3 +24,19 @@ import logger from "../utils/logger.js";
  */
 export const eventBus: EventBus | null =
   kafka && producer ? createEventBus(kafka, producer, logger) : null;
+
+/**
+ * Outbox `publish` adapter. Wraps this service's single EventBus so the shared
+ * `OutboxPoller` has a ready-to-call publisher. `EventBus.publish` rethrows on
+ * failure (so the poller's retry/DLQ path triggers); when Kafka is unconfigured
+ * the poller gets a logged no-op instead of crashing local/dev runs.
+ *
+ * Signature matches `@nexus/kafka`'s `OutboxPublishFn` ({ topic, key, value,
+ * traceparent? }).
+ */
+export const publishOutboxEvent = eventBus
+  ? (params: { topic: string; key: string; value: unknown; traceparent?: string }) =>
+      eventBus.publish(params)
+  : async () => {
+      logger.warn("[OutboxPoller] EventBus not available — cannot publish");
+    };
