@@ -45,7 +45,6 @@ import * as AuthRepository from "../../modules/auth/auth.repository.js";
 import { emitDomainEvent } from "@nexus/kafka";
 import {
   AuthDomainEventTypes,
-  createEventMetadata,
 } from "@nexus/event-contracts";
 import { OtpPurpose, type TOtpPurpose } from "../../events/otp.js";
 import verifyToken from "../../utils/token/verifyToken.js";
@@ -183,7 +182,6 @@ const registerRequest = async (
         email,
         otp,
       },
-      metadata: createEventMetadata("auth-service"),
     });
   });
 };
@@ -312,7 +310,6 @@ const resendOtp = async (
         email,
         otp,
       },
-      metadata: createEventMetadata("auth-service"),
     });
   });
 };
@@ -576,7 +573,6 @@ const requestPasswordReset = async (
         email,
         resetUiLink: resetUiLink as string,
       },
-      metadata: createEventMetadata("auth-service"),
     });
   });
 };
@@ -658,7 +654,6 @@ const provisionSeller = async (credentialId: string): Promise<void> => {
         userId: credential.id,
         requestedRole: "SELLER",
       },
-      metadata: createEventMetadata("auth-service"),
     });
   });
 };
@@ -697,7 +692,6 @@ const provisionCustomer = async (credentialId: string): Promise<void> => {
         userId: credential.id,
         requestedRole: "CUSTOMER",
       },
-      metadata: createEventMetadata("auth-service"),
     });
   });
 };

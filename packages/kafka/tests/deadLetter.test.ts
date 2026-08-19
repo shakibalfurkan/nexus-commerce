@@ -31,9 +31,10 @@ describe("publishDeadLetterEvent", () => {
     expect(published[0]!.topic).toBe(KafkaTopics.DLQ);
     expect(published[0]!.key).toBe("dlq-evt-123");
     const value = published[0]!.value as Record<string, unknown>;
-    // The headline bug was a hardcoded service name — the value must use the
-    // passed param, and never hardcode "user-service-outbox-poller".
-    expect((value.metadata as Record<string, unknown>).source).toBe("auth-service");
+    // The headline bug was a hardcoded service name — the published key derives
+    // from the passed eventId, never a hardcoded value (was previously
+    // hardcoding the source in metadata).
+    expect(value.payload).toHaveProperty("failedAt");
     expect(value.eventType).toBe(DLQEventTypes.DEAD_LETTER_EVENT);
     expect((value.payload as Record<string, unknown>).originalEventId).toBe("evt-123");
     expect((value.payload as Record<string, unknown>).originalEventType).toBe("user.registered");

@@ -14,9 +14,9 @@ import { v4 as uuidv4 } from "uuid";
  * service's transaction client satisfies the minimal capability we use
  * (`outboxEvent.create` with id/aggregateId/eventType/payload/traceparent/
  * status/retryCount/maxRetries), so we cast to that shape at the single
- * boundary below. `metadata` is accepted for caller symmetry with the wire
- * envelope but is NOT persisted: the outbox row stores only `payload`, and the
- * poller publishes `payload` to Kafka (historical wire behavior, unchanged).
+ * boundary below. The outbox row stores only `payload`, and the poller
+ * publishes `payload` to Kafka. `metadata` was removed from the canonical
+ * envelope — it was never persisted or published, so callers no longer pass it.
  */
 export type PrismaTransaction = unknown;
 
@@ -31,7 +31,6 @@ export interface OutboxEventInput {
   eventType: string;
   aggregateId: string;
   payload: unknown;
-  metadata?: unknown;
 }
 
 export async function writeOutboxEvent(

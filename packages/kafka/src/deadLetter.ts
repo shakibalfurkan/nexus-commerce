@@ -29,11 +29,6 @@ export async function publishDeadLetterEvent(
       error: params.errorMessage,
       failedAt: now,
     },
-    metadata: {
-      emittedAt: now,
-      source: params.serviceName,
-      version: 1,
-    },
   };
 
   try {

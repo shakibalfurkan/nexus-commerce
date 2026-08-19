@@ -4,7 +4,6 @@ import { BadRequestError } from "@nexus/errors";
 import checkOtpRestrictions from "../../utils/otp/checkOtpRestrictions.js";
 import {
   AuthDomainEventTypes,
-  createEventMetadata,
 } from "@nexus/event-contracts";
 import { OtpPurpose } from "../../events/otp.js";
 import { emitDomainEvent } from "@nexus/kafka";
@@ -83,7 +82,6 @@ const customerRegisterRequest = async (
         email,
         otp,
       },
-      metadata: createEventMetadata("auth-service"),
     });
   });
 };

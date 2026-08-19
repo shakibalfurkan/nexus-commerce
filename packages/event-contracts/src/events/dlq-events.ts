@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EventMetadataSchema } from "../envelope.js";
+
 
 /**
  * Dead-letter event. Published by @nexus/kafka's `publishDeadLetterEvent`
@@ -22,7 +22,6 @@ export const DeadLetterEventSchema = z.object({
     error: z.string(),
     failedAt: z.string(),
   }),
-  metadata: EventMetadataSchema,
 });
 
 export type DeadLetterEvent = z.infer<typeof DeadLetterEventSchema>;

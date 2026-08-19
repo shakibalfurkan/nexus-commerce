@@ -103,11 +103,7 @@ export async function createUserProfile(
         lastName: user.profile?.lastName ?? "",
         createdAt: user.createdAt,
       },
-      metadata: {
-        emittedAt: new Date().toISOString(),
-        source: "user-service",
-        version: 1,
-      },
+
     });
 
     return user;

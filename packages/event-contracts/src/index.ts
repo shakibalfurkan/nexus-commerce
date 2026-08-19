@@ -5,7 +5,7 @@
  * event schemas. No logic lives here.
  *
  * Canonical envelope (the ONE shape every service uses):
- *   { eventType, aggregateId, payload, metadata: { emittedAt, source, version } }
+ *   { eventType, aggregateId, payload }
  */
 
 export * from "./envelope.js";

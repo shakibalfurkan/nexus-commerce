@@ -142,7 +142,9 @@ describe("OutboxPoller", () => {
     expect(dlqCall!.topic).toBe(KafkaTopics.DLQ);
     const dlqValue = dlqCall!.value as Record<string, unknown>;
     expect(dlqValue.eventType).toBe(DLQEventTypes.DEAD_LETTER_EVENT);
-    expect((dlqValue.metadata as Record<string, unknown>).source).toBe("auth-service");
+    // `metadata` was removed from the envelope; the DLQ payload now carries the
+    // triage context (failedAt) and the eventId-derived key.
+    expect(dlqValue.payload).toHaveProperty("failedAt");
     await poller.stop();
   });
 

@@ -1,14 +1,8 @@
 import { z } from "zod";
-import { EventMetadataSchema, type EventMetadata } from "../envelope.js";
+
 
 /**
  * auth-service produced domain events.
- *
- * Payload shapes are copied verbatim from the prior auth-service
- * `eventTypes.ts` (the live wire contracts) — only the import path changes.
- * `seller.profile.created` / `customer.profile.created` were DEFINED but never
- * EMITTED (no producer code); per the consolidation decision they are dropped
- * entirely rather than shipped as dead schemas.
  */
 
 export const AuthDomainEventTypes = {
@@ -25,11 +19,9 @@ export const EmailVerificationOtpEventSchema = z.object({
   eventType: z.literal(AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT),
   aggregateId: z.uuid(),
   payload: z.object({
-    firstName: z.string(),
     email: z.string(),
     otp: z.string(),
   }),
-  metadata: EventMetadataSchema,
 });
 
 export type EmailVerificationOtpEvent = z.infer<
@@ -43,7 +35,6 @@ export const PasswordResetRequestedEventSchema = z.object({
     email: z.string(),
     resetUiLink: z.string(),
   }),
-  metadata: EventMetadataSchema,
 });
 
 export type PasswordResetRequestedEvent = z.infer<
@@ -57,7 +48,6 @@ export const SellerProfileRequestedEventSchema = z.object({
     userId: z.string(),
     requestedRole: z.literal("SELLER"),
   }),
-  metadata: EventMetadataSchema,
 });
 
 export type SellerProfileRequestedEvent = z.infer<
@@ -71,7 +61,6 @@ export const CustomerProfileRequestedEventSchema = z.object({
     userId: z.string(),
     requestedRole: z.literal("CUSTOMER"),
   }),
-  metadata: EventMetadataSchema,
 });
 
 export type CustomerProfileRequestedEvent = z.infer<
@@ -87,6 +76,4 @@ export const AuthDomainEventSchema = z.discriminatedUnion("eventType", [
 
 export type TAuthDomainEvent = z.infer<typeof AuthDomainEventSchema>;
 
-// Re-export for convenience so services that import metadata helpers don't
-// reach into ../envelope.
-export type { EventMetadata };
+
