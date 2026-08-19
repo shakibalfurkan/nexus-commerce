@@ -1,145 +1,85 @@
-# Nexus Commerce — Working Context
+# Outbox Delivery Simplification — Work Context
 
-> Updated automatically at each step so work can resume after a break.
-> Project rules: see `AGENTS.md`. Task: see `TODO.md`.
+> Resume file. Regenerate after every step so work can continue from the last
+> completed point if the session is interrupted.
 
-## Current Milestone / Step
+## Goal (from TODO.md)
+Remove Postgres LISTEN/NOTIFY (`OutboxListener`) entirely from `@nexus/kafka`.
+Standardize every service on a uniform `OutboxPoller` interval of **5000ms**.
+CockroachDB (used/planned for several services) does not support LISTEN/NOTIFY,
+so a mixed per-service strategy adds complexity without benefit at this scale.
 
-**STEP 4 — Migrate services — DONE (all three services).**
-**STEP 5 — Commits — DONE (6 buildable chunks + follow-up dedup chunk).**
-Outbox→`@nexus/kafka` refactor complete: shared package, trigger migrations,
-all three service migrations, `eventName`→`eventType` consistency, B11 logger
-swap, and a dedupe pass that extracted `createOutboxInfrastructure`.
+## Step status
+- [x] STEP 1 — Audit (findings reported, confirmed by user)
+- [x] STEP 2 — Remove listener infrastructure
+- [x] STEP 3 — Standardize interval to 5000ms
+- [x] STEP 4 — Update AGENTS.md
+- [x] STEP 5 — Write ADR
+- [ ] STEP 6 — Commits (IN PROGRESS — 5 logical chunks)
 
-Peer-review `REVIEW-outbox-kafka.md` (B1–B11) fully reconciled. A follow-up
-consistency pass renamed the wire discriminator `eventName` → **`eventType`**
-everywhere (producers, consumer schema, outbox store, DLQ helper, tests) so the
-single canonical name matches the `OutboxEvent.eventType` DB column.
+## Confirmed decisions (from user)
+- ADR path: `docs/adr/` (authoritative repo rule in AGENTS.md).
+- Trigger migrations: DELETE folders (predeploy, unapplied to any real DB).
 
----
+## What was changed
+### packages/kafka
+- DELETED `src/outboxListener.ts` (the LISTEN/NOTIFY listener).
+- `src/index.ts`: stops re-exporting `outboxListener`.
+- `src/outboxInfrastructure.ts`: poller-only. Removed `OutboxListener` import +
+  wiring; `OutboxInfrastructureDeps` no longer has `connectionString`/`channel`/
+  `maxReconnectAttempts`; start/stop drive only the poller.
+- `src/types.ts`: `OutboxPollerOptions` no longer has `minNotifyIntervalMs`;
+  `DEFAULT_OUTBOX_POLLER_OPTIONS.fallbackPollIntervalMs = 5000`; docs rewritten
+  (polling is the ONLY trigger, not a fallback).
+- `src/outboxPoller.ts`: removed `handleNotification()` + `lastNotifyPollAt`;
+  class doc rewritten to single-interval trigger.
+- `tests/outboxInfrastructure.test.ts`: poller-only assertions (was listener-
+  centric; dropped the stale `DATABASE_URL` throw test).
+- `tests/outboxPoller.test.ts`: removed `minNotifyIntervalMs`; 2nd-drain test now
+  uses stop/reset/start instead of `handleNotification`.
+- `package.json`: description updated; dropped `pg` + `@types/pg` (dead).
 
-## STEP LOG
+### services
+- `auth-service/src/events/outboxPoller.ts` + `user-service/src/events/
+  outboxPoller.ts`: comment-only ("OutboxPoller + OutboxListener" →
+  "OutboxPoller"). No API change — neither passed listener args.
+- DELETED both `prisma/migrations/20260814000000_add_outbox_notify_trigger/`
+  folders (auth + user).
 
-### STEP 1 — Audit — DONE (confirmed by user)
-Findings in "Audit findings" below. Independently verified by peer review
-(`REVIEW-outbox-kafka.md`): every audit claim confirmed; added corrections
-B1–B11.
+### repo docs
+- `AGENTS.md`: outbox line → "interval poller, 5s, uniform across all services
+  regardless of DB provider…".
+- `docs/adr/0001-outbox-delivery-strategy.md`: new ADR.
 
-### STEP 2 — Build packages/kafka — DONE (+ compile break fixed)
-Structure (one file per concern, `index.ts` barrel only): `types.ts`,
-`backoff.ts`, `eventBus.ts` (TLS default-secure via `sslRejectUnauthorized`
-default `true`; `saslMechanism` configurable; `createEventBus.publish` rethrows
-so the poller's retry/DLQ path triggers), `outboxPoller.ts` (`OutboxPoller`
-class, DI via `OutboxPollerDeps`; `handleNotification` wake-up w/ throttle;
-`start()` 30s fallback + initial drain; `stop()` awaits in-flight batch),
-`outboxListener.ts` (Postgres LISTEN/NOTIFY via `pg`; auto-reconnect w/
-exponential backoff, `maxReconnectAttempts` default 10; `UNLISTEN` + close on
-`stop()`), `deadLetter.ts` (`publishDeadLetterEvent({serviceName, eventId,
-eventType, errorMessage, publish, logger})` → `KafkaTopics.DLQ`; `source` = passed
-`serviceName`; best-effort). 10 unit tests, all passing.
+## Verification
+- `pnpm -C packages/kafka run check-types` → passes (tsc --noEmit clean).
+- `pnpm -C packages/kafka test` → 18 passed (5 files).
+- Repo-wide grep: no remaining references to OutboxListener / outboxListener /
+  handleNotification / minNotifyIntervalMs / outbox_channel / pg_notify /
+  notify_outbox_event (only in TODO.md + this context.md, which describe the work).
 
-### STEP 3 — Trigger migrations — DONE
-`services/{auth,user}-service/prisma/migrations/20260814000000_add_outbox_notify_trigger/migration.sql`
-— `CREATE OR REPLACE FUNCTION notify_outbox_event()` → `pg_notify('outbox_channel',
-NEW.id::text)`; trigger `AFTER INSERT ON "outbox_events"` (physical table name
-correct, B1). Down-migration documented as comment. Not applied to a live DB
-(no Neon creds) — applies in deploy pipeline.
+## ⚠️ Pre-existing unrelated working-tree changes — DO NOT BUNDLE
+These files were already modified before this task and are NOT part of the
+outbox work. They remain uncommitted in the working tree and must be handled
+separately by the user:
+- `packages/kafka/src/backoff.ts`, `deadLetter.ts`, `eventBus.ts` — doc/comment
+  stripping (likely a formatter pass).
+- `packages/kafka/src/eventBus.ts` — BEHAVIORAL: `sslRejectUnauthorized`
+  default flipped `true` → `false` (disables Kafka TLS cert verification).
+  This is a security regression vs AGENTS.md ("Helmet + CORS locked…", secrets
+  in env). Flag to user before any commit.
+- `services/auth-service/src/server.ts` — minor refactor of eventBus.connect().
 
-### STEP 4 — Migrate services — DONE
-- **notification-service ✅**: imports `KafkaTopics` from `@nexus/event-contracts`.
-- **auth-service ✅**: `events/outboxPoller.ts` constructs `OutboxPoller` +
-  `OutboxListener`; deleted local `events/eventBus.ts`, `events/outboxDLQ.ts`,
-  `events/handleProvisionedProfiles.ts`. `server.ts` calls `stopOutboxPoller()`.
-- **user-service ✅** (this session): rewrote `events/outboxPoller.ts` to the
-  shared wiring (re-exports `startOutboxPoller`/`stopOutboxPoller` so `server.ts`
-  is unchanged); deleted orphaned `events/eventBus.ts` and `events/outboxDLQ.ts`
-  (no importers — dead code); `outboxWriter.ts` dropped the 4 dead
-  `COMMANDS`/`NOTIFICATIONS` topic mappings (non-existent topics) and routes
-  everything to `DOMAIN_EVENTS`/`DLQ`; `config/kafka.ts` `console.warn` →
-  `@nexus/logger` (B11).
+## Commits plan (logical chunks, per TODO Step 6)
+1. docs: audit report (TODO.md + context.md reflect audit) — actually the audit
+   is already in context.md; commit it together with the work. Better chunking:
+   (a) refactor(kafka): remove LISTEN/NOTIFY listener, poller-only infra;
+   (b) refactor(kafka): set uniform 5s poll interval;
+   (c) docs: update AGENTS.md outbox delivery line;
+   (d) docs: add ADR 0001 outbox delivery strategy;
+   (e) refactor(services): drop OutboxListener comment + delete trigger migrations.
+   Keep the 4 pre-existing files OUT of these commits.
 
-### Consistency pass — `eventName` → `eventType` (this session)
-Canonical event discriminator is now `eventType` everywhere:
-- `packages/kafka/src/deadLetter.ts` — DLQ value uses `eventType` (+ tests).
-- `notification-service` — `domain-event.schemas.ts` (field + `discriminatedUnion`
-  key + registry mapped-type keys), `kafka-consumer.ts`, `notification-service.ts`.
-- `auth-service` — `eventTypes.ts` (field + union key), `outboxWriter.ts`
-  (`resolveTopic(eventType)`), emit sites in `auth.service.ts` + `customer.service.ts`.
-- `user-service` — `eventTypes.ts` (field + union keys), `outboxWriter.ts`,
-  `user.service.ts` emit site.
-All four packages type-check clean on the outbox/rename path; `vitest` 10/10.
-
-## Audit findings (Step 1 summary) — all resolved
-- Headline bug (hardcoded `source: "user-service-outbox-poller"`) → fixed in
-  shared `deadLetter.ts` (param now).
-- Local `EventBus.publish` swallowed errors → shared `createEventBus.publish`
-  rethrows.
-- user-service `COMMANDS`/`NOTIFICATIONS` dead topics → deleted.
-- Local `KafkaTopics` duplication → imported from `@nexus/event-contracts`.
-- Wire envelope mismatch → intentionally NOT changing (B6).
-- `console.warn` in configs → migrated to `@nexus/logger` (B11).
-
-## Fixes applied (this session)
-1. **`exactOptionalPropertyTypes` compile break** in `packages/kafka`
-   (`eventBus.ts` + `outboxPoller.ts`) — conditionally spread `traceparent`.
-2. **auth-server graceful shutdown** — `stopOutboxPoller()` in `shutdown`.
-3. **user-service migration** to shared `@nexus/kafka` package (OutboxPoller +
-   OutboxListener), delete dead local outbox files, fix dead topic maps.
-4. **B11** — `console.warn` → `@nexus/logger` in user `config/kafka.ts`
-   (auth already done by Cline).
-5. **Consistency** — `eventName` → `eventType` across all producers/consumer/
-   DLQ/tests.
-
-## Git state / deps
-- `packages/kafka/package.json`: deps += `pg`, `@nexus/event-contracts`;
-  devDeps += `@types/pg`, `vitest`, `@vitest/coverage-v8`; `test` script.
-  `pnpm-lock.yaml` updated.
-- Uncommitted (mixed pre-existing WIP + Cline's + this session's):
-  `packages/event-contracts` (`KafkaTopics` export), `packages/kafka`
-  (`src/*` + `tests/`), notification + auth + user migrations, the two trigger-
-  migration folders, `REVIEW-outbox-kafka.md`, `context.md`, `TODO.md`.
-- STEP 5 commits in progress — each chunk leaves the repo building.
-
-## Verification commands
-- package: `cd packages/kafka && npx tsc --noEmit && npx vitest run`
-- notification-service: `cd services/notification-service && npx tsc --noEmit`
-- auth-service: `cd services/auth-service && npx tsc --noEmit`
-- user-service: `cd services/user-service && npx tsc --noEmit` (outbox/rename
-  path clean; ~50 PRE-EXISTING unrelated baseline errors remain in
-  seller-profile / shop-address / audit-log / user.dto / auth.ts — out of scope,
-  not regressed by this work).
-
-
-## Dedupe pass (follow-up, after user flagged remaining duplicates)
-
-User reported `outboxPoller.ts` / `eventTypes.ts` still present in auth + user
-as "duplicates". Investigation distinguished real duplication from legitimate
-per-service glue:
-
-- **Real duplicate (fixed):** `auth/src/events/outboxPoller.ts` and
-  `user/src/events/outboxPoller.ts` were ~95% identical wiring glue
-  (construct `OutboxPoller` + `OutboxListener` + `createEventBus`, re-export
-  `start`/`stop`). Extracted to a single
-  `createOutboxInfrastructure()` factory in `packages/kafka`
-  (`src/outboxInfrastructure.ts`, exported from the barrel). Both service files
-  are now ~12-line adapters that pass `prisma`, `kafka`/`producer`,
-  `serviceName`, and `resolveTopic`. `server.ts` imports unchanged.
-- **NOT a duplicate (kept):** `eventTypes.ts` per service are domain event
-  *schemas* (service-specific); `outboxWriter.ts` holds the service-specific
-  topic map + Prisma glue; `notification/resilience/backoff.ts` re-implements
-  `calculateBackoff` but with a **different algorithm** (full-jitter random for
-  Resend retries) vs. the shared deterministic outbox backoff — merging would
-  change consumer retry behavior, out of scope. The notification consumer
-  correctly does NOT use the producer-only `OutboxPoller` (it's a consumer).
-- **Stale doc bug (fixed):** `notification/domain-event.schemas.ts` JSDoc
-  example showed `eventName` and referenced the deleted `src/events/eventBus.ts`.
-  Corrected to `eventType` and the current `createEventBus` reference.
-
-**Verification:** `packages/kafka` `tsc --noEmit` clean; vitest **12/12**
-(+2 new factory tests: start/stop delegation + DATABASE_URL guard). auth +
-user outbox path `tsc` clean; notification `tsc` clean.
-
-## Remaining steps
-- STEP 5: all 6 logical commits landed (shared pkg + tests, trigger migrations,
-  notification, auth, user, docs). Follow-up dedup pass committed as its own
-  chunk. Working tree clean after final commit.
+## Resume point
+Continue STEP 6: stage only the outbox-delivery files and create the 5 commits
+above. Do NOT include backoff.ts/deadLetter.ts/eventBus.ts/auth server.ts.
