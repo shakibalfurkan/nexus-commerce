@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOutboxInfrastructure } from "../src/outboxInfrastructure.js";
 import { OutboxPoller } from "../src/outboxPoller.js";
-import { OutboxListener } from "../src/outboxListener.js";
 import type { Logger } from "@nexus/logger";
 import type { OutboxEventDb } from "../src/types.js";
 
@@ -19,25 +18,16 @@ const resolveTopic = (eventType: string) => `topic-for-${eventType}`;
 
 afterEach(() => {
   vi.restoreAllMocks();
-  delete process.env.DATABASE_URL;
 });
 
 describe("createOutboxInfrastructure", () => {
-  it("delegates start()/stop() to the poller and listener", async () => {
+  it("delegates start()/stop() to the poller (no listener)", async () => {
     const pollerStart = vi
       .spyOn(OutboxPoller.prototype, "start")
       .mockResolvedValue();
     const pollerStop = vi
       .spyOn(OutboxPoller.prototype, "stop")
       .mockResolvedValue();
-    const listenerStart = vi
-      .spyOn(OutboxListener.prototype, "start")
-      .mockResolvedValue();
-    const listenerStop = vi
-      .spyOn(OutboxListener.prototype, "stop")
-      .mockResolvedValue();
-
-    process.env.DATABASE_URL = "postgres://localhost:5432/nexus";
 
     const infra = createOutboxInfrastructure({
       prisma: fakePrisma,
@@ -50,21 +40,7 @@ describe("createOutboxInfrastructure", () => {
     await infra.start();
     await infra.stop();
 
-    expect(listenerStart).toHaveBeenCalledOnce();
     expect(pollerStart).toHaveBeenCalledOnce();
-    expect(listenerStop).toHaveBeenCalledOnce();
     expect(pollerStop).toHaveBeenCalledOnce();
-  });
-
-  it("throws when DATABASE_URL is missing (listener cannot connect)", () => {
-    expect(() =>
-      createOutboxInfrastructure({
-        prisma: fakePrisma,
-        serviceName: "auth-service",
-        eventBus: null,
-        resolveTopic,
-        logger: noopLog,
-      }),
-    ).toThrow(/DATABASE_URL/);
   });
 });

@@ -33,10 +33,11 @@ export interface OutboxEventRow {
 
 export interface OutboxPollerOptions {
   /**
-   * Slow safety-net poll interval (ms). The Postgres LISTEN/NOTIFY listener is
-   * the PRIMARY trigger; this interval is the FALLBACK that catches events
-   * written while the listener is disconnected (NOTIFY is fire-and-forget and
-   * drops messages sent while no listener is subscribed). Default 30s.
+   * Interval (ms) between outbox drains. This is the ONLY delivery trigger:
+   * the poller runs on a fixed cadence and re-scans for PENDING rows every
+   * tick. Near-real-time LISTEN/NOTIFY was removed because CockroachDB (used
+   * by several services) does not support it; 5s keeps latency bounded and
+   * the mechanism uniform across all DB providers. Default 5s.
    */
   fallbackPollIntervalMs: number;
   /** Max events claimed per batch. */
@@ -49,23 +50,15 @@ export interface OutboxPollerOptions {
   maxRetries: number;
   /** How long a claimed-but-unfinished row stays locked before it is reaped. */
   lockTimeoutMs: number;
-  /**
-   * Minimum gap (ms) between listener-triggered batch polls. NOTIFY is
-   * fire-and-forget and a burst of inserts can fire many notifications; this
-   * throttles them into a single wake-up (the poll query drains all PENDING
-   * rows regardless). Default 500ms.
-   */
-  minNotifyIntervalMs: number;
 }
 
 export const DEFAULT_OUTBOX_POLLER_OPTIONS: OutboxPollerOptions = {
-  fallbackPollIntervalMs: 30_000,
+  fallbackPollIntervalMs: 5_000,
   batchSize: 100,
   baseBackoffMs: 1_000,
   maxBackoffMs: 60_000,
   maxRetries: 5,
   lockTimeoutMs: 30_000,
-  minNotifyIntervalMs: 500,
 };
 
 /**

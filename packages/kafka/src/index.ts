@@ -8,6 +8,5 @@ export * from "./types.js";
 export * from "./backoff.js";
 export * from "./eventBus.js";
 export * from "./outboxPoller.js";
-export * from "./outboxListener.js";
 export * from "./outboxInfrastructure.js";
 export * from "./deadLetter.js";

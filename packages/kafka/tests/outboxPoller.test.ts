@@ -79,7 +79,7 @@ describe("OutboxPoller", () => {
         published.push(p);
       },
       logger: noopLog,
-      options: { maxRetries: 1, minNotifyIntervalMs: 0, fallbackPollIntervalMs: 60_000 },
+      options: { maxRetries: 1, fallbackPollIntervalMs: 60_000 },
     });
 
     await poller.start();
@@ -127,7 +127,7 @@ describe("OutboxPoller", () => {
         }
       },
       logger: noopLog,
-      options: { maxRetries: 1, minNotifyIntervalMs: 0, fallbackPollIntervalMs: 60_000 },
+      options: { maxRetries: 1, fallbackPollIntervalMs: 60_000 },
     });
 
     await poller.start();
@@ -182,7 +182,7 @@ describe("OutboxPoller", () => {
         }
       },
       logger: noopLog,
-      options: { maxRetries: 2, minNotifyIntervalMs: 0, fallbackPollIntervalMs: 60_000 },
+      options: { maxRetries: 2, fallbackPollIntervalMs: 60_000 },
     });
 
     await poller.start();
@@ -191,8 +191,11 @@ describe("OutboxPoller", () => {
     expect(rows[0]!.status).toBe("PENDING");
     expect(rows[0]!.retryCount).toBe(1);
 
-    // Second drain (simulate the next poll/notification): publish throws again → DEAD
-    await poller.handleNotification("ignored");
+    // Second drain (simulate the next poll tick): stop, reset the row to
+    // PENDING+unlocked, restart → publish throws again → DEAD.
+    await poller.stop();
+    rows[0]!.lockedAt = null;
+    await poller.start();
     expect(rows[0]!.status).toBe("DEAD");
     expect(rows[0]!.retryCount).toBe(2);
     await poller.stop();

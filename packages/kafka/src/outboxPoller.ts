@@ -28,16 +28,16 @@ import { publishDeadLetterEvent } from "./deadLetter.js";
  *   4. Success → COMPLETED. Failure → retry with backoff, or DEAD + DLQ once
  *      `maxRetries` is exhausted.
  *
- * Two triggers drive it:
- *   - {@link handleNotification} — invoked by the Postgres LISTEN/NOTIFY
- *     listener (primary, near-real-time).
- *   - `start()` interval — slow safety-net fallback (default 30s) that catches
- *     events written while the listener was disconnected.
+ * A single interval trigger drives it: `start()` begins a fixed-cadence poll
+ * (default 5s) that re-scans for PENDING rows every tick. Near-real-time
+ * LISTEN/NOTIFY was removed because CockroachDB (used by several services)
+ * does not support it — polling is now the uniform delivery mechanism across
+ * all DB providers.
  *
- * WHY the `isBatchProcessing` lock exists: without it, a NOTIFY arriving while
- * a batch is mid-flight would start a second concurrent batch and both could
- * claim/publish the same rows (double delivery + lost updates). The gate
- * serializes batches; anything missed is re-picked by the next trigger.
+ * WHY the `isBatchProcessing` lock exists: without it, two concurrent
+ * intervals could start a second batch and both could claim/publish the same
+ * rows (double delivery + lost updates). The gate serializes batches; anything
+ * missed is re-picked by the next tick.
  */
 export class OutboxPoller {
   private readonly deps: OutboxPollerDeps;
@@ -48,7 +48,6 @@ export class OutboxPoller {
   private isRunning = false;
   private isBatchProcessing = false;
   private pendingBatch: Promise<void> | null = null;
-  private lastNotifyPollAt = 0;
 
   constructor(deps: OutboxPollerDeps) {
     this.deps = deps;
@@ -56,26 +55,7 @@ export class OutboxPoller {
     this.logger = deps.logger;
   }
 
-  /**
-   * Primary wake-up hook for the LISTEN/NOTIFY listener.
-   *
-   * The payload id is ignored (B4): NOTIFY is fire-and-forget and coalesces /
-   * drops bursts, so a per-id read would lose events. Instead we treat it as a
-   * "wake up and drain" signal — the batch poll reads all eligible PENDING rows
-   * and the PROCESSING+lockTimeout lock dedupes against the interval poll.
-   * A short throttle prevents a burst of NOTIFYs from spawning many polls.
-   */
-  handleNotification(_eventId: string): Promise<void> {
-    if (!this.isRunning) return Promise.resolve();
-    const now = Date.now();
-    if (now - this.lastNotifyPollAt < this.options.minNotifyIntervalMs) {
-      return Promise.resolve();
-    }
-    this.lastNotifyPollAt = now;
-    return this.triggerBatch();
-  }
-
-  /** Begin the slow safety-net polling interval. */
+  /** Begin the interval polling loop. */
   async start(): Promise<void> {
     if (this.isRunning) {
       this.logger.warn("[OutboxPoller] Already running");
@@ -83,7 +63,7 @@ export class OutboxPoller {
     }
     this.isRunning = true;
     this.logger.info(
-      `[OutboxPoller] Started. Fallback interval ${this.options.fallbackPollIntervalMs}ms, batch ${this.options.batchSize}`,
+      `[OutboxPoller] Started. Poll interval ${this.options.fallbackPollIntervalMs}ms, batch ${this.options.batchSize}`,
     );
 
     // Drain rows written before startup so they are not delayed a full interval.

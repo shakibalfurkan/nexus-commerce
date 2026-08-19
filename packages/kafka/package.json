@@ -1,7 +1,7 @@
 {
   "name": "@nexus/kafka",
   "version": "0.0.0",
-  "description": "Shared Kafka producer/consumer, outbox poller, Postgres LISTEN/NOTIFY listener, and DLQ helpers for Nexus services",
+  "description": "Shared Kafka producer/consumer, outbox interval poller, and DLQ helpers for Nexus services",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -15,13 +15,11 @@
     "@nexus/event-contracts": "workspace:*",
     "@nexus/logger": "workspace:*",
     "kafkajs": "^2.2.4",
-    "pg": "^8.22.0",
     "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^26.1.2",
-    "@types/pg": "^8.20.0",
     "@vitest/coverage-v8": "^4.1.10",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
