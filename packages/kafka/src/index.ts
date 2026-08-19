@@ -9,3 +9,5 @@ export * from "./backoff.js";
 export * from "./eventBus.js";
 export * from "./outboxPoller.js";
 export * from "./deadLetter.js";
+export * from "./topicRouter.js";
+export * from "./outboxWriter.js";
