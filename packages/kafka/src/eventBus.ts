@@ -107,7 +107,7 @@ export function createKafkaClient(options: KafkaClientOptions): {
   kafka: Kafka;
   producer: ReturnType<Kafka["producer"]>;
 } {
-  const rejectUnauthorized = options.sslRejectUnauthorized ?? false;
+  const rejectUnauthorized = options.sslRejectUnauthorized ?? true;
   const mechanism = options.saslMechanism ?? "scram-sha-256";
 
   const kafka = new Kafka({
