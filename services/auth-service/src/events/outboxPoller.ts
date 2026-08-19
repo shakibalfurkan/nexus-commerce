@@ -1,7 +1,6 @@
-import { OutboxPoller } from "@nexus/kafka";
+import { OutboxPoller, resolveTopic } from "@nexus/kafka";
 import { prisma } from "../lib/prisma.js";
 import { publishOutboxEvent } from "./eventBus.js";
-import { resolveTopic } from "./outboxWriter.js";
 import logger from "../utils/logger.js";
 import config from "../config/index.js";
 

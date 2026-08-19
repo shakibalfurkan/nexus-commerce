@@ -42,13 +42,12 @@ import {
 } from "../../utils/token/revokeToken.js";
 import { generateToken } from "../../utils/token/generateToken.js";
 import * as AuthRepository from "../../modules/auth/auth.repository.js";
-import { emitDomainEvent } from "../../events/outboxWriter.js";
+import { emitDomainEvent } from "@nexus/kafka";
 import {
-  DomainEventTypes,
-  OtpPurpose,
+  AuthDomainEventTypes,
   createEventMetadata,
-  type TOtpPurpose,
-} from "../../events/eventTypes.js";
+} from "@nexus/event-contracts";
+import { OtpPurpose, type TOtpPurpose } from "../../events/otp.js";
 import verifyToken from "../../utils/token/verifyToken.js";
 import type { JwtPayload } from "jsonwebtoken";
 
@@ -175,15 +174,17 @@ const registerRequest = async (
 
   const aggregateId = uuidv5(email, DNS_NAMESPACE);
 
-  await emitDomainEvent({
-    eventType: DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
-    aggregateId,
-    payload: {
-      firstName,
-      email,
-      otp,
-    },
-    metadata: createEventMetadata(),
+  await prisma.$transaction(async (tx) => {
+    await emitDomainEvent(tx, {
+      eventType: AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
+      aggregateId,
+      payload: {
+        firstName,
+        email,
+        otp,
+      },
+      metadata: createEventMetadata("auth-service"),
+    });
   });
 };
 
@@ -300,18 +301,19 @@ const resendOtp = async (
       firstName = parsed.firstName ?? "User";
     }
   }
-
   const aggregateId = uuidv5(email, DNS_NAMESPACE);
 
-  await emitDomainEvent({
-    eventType: DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
-    aggregateId,
-    payload: {
-      firstName,
-      email,
-      otp,
-    },
-    metadata: createEventMetadata(),
+  await prisma.$transaction(async (tx) => {
+    await emitDomainEvent(tx, {
+      eventType: AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
+      aggregateId,
+      payload: {
+        firstName,
+        email,
+        otp,
+      },
+      metadata: createEventMetadata("auth-service"),
+    });
   });
 };
 
@@ -566,14 +568,16 @@ const requestPasswordReset = async (
     resetUiLink = `${config.customer_client_url}/reset-password?resetToken=${resetToken}`;
   }
 
-  await emitDomainEvent({
-    eventType: DomainEventTypes.PASSWORD_RESET_REQUESTED,
-    aggregateId: credential.id,
-    payload: {
-      email,
-      resetUiLink: resetUiLink as string,
-    },
-    metadata: createEventMetadata(),
+  await prisma.$transaction(async (tx) => {
+    await emitDomainEvent(tx, {
+      eventType: AuthDomainEventTypes.PASSWORD_RESET_REQUESTED,
+      aggregateId: credential.id,
+      payload: {
+        email,
+        resetUiLink: resetUiLink as string,
+      },
+      metadata: createEventMetadata("auth-service"),
+    });
   });
 };
 
@@ -646,14 +650,16 @@ const provisionSeller = async (credentialId: string): Promise<void> => {
   }
 
   // Emit async event — user-service will consume and create the profile
-  await emitDomainEvent({
-    eventType: DomainEventTypes.SELLER_PROFILE_REQUESTED,
-    aggregateId: credential.id,
-    payload: {
-      userId: credential.id,
-      requestedRole: "SELLER",
-    },
-    metadata: createEventMetadata(),
+  await prisma.$transaction(async (tx) => {
+    await emitDomainEvent(tx, {
+      eventType: AuthDomainEventTypes.SELLER_PROFILE_REQUESTED,
+      aggregateId: credential.id,
+      payload: {
+        userId: credential.id,
+        requestedRole: "SELLER",
+      },
+      metadata: createEventMetadata("auth-service"),
+    });
   });
 };
 
@@ -683,14 +689,16 @@ const provisionCustomer = async (credentialId: string): Promise<void> => {
   }
 
   // Emit async event
-  await emitDomainEvent({
-    eventType: DomainEventTypes.CUSTOMER_PROFILE_REQUESTED,
-    aggregateId: credential.id,
-    payload: {
-      userId: credential.id,
-      requestedRole: "CUSTOMER",
-    },
-    metadata: createEventMetadata(),
+  await prisma.$transaction(async (tx) => {
+    await emitDomainEvent(tx, {
+      eventType: AuthDomainEventTypes.CUSTOMER_PROFILE_REQUESTED,
+      aggregateId: credential.id,
+      payload: {
+        userId: credential.id,
+        requestedRole: "CUSTOMER",
+      },
+      metadata: createEventMetadata("auth-service"),
+    });
   });
 };
 

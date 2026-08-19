@@ -1,6 +1,6 @@
 import { redisClient } from "../../config/redis.js";
 import { BadRequestError } from "@nexus/errors";
-import { OtpPurpose, type TOtpPurpose } from "../../events/eventTypes.js";
+import { OtpPurpose, type TOtpPurpose } from "../../events/otp.js";
 
 const checkOtpRestrictions = async (
   email: string,

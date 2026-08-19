@@ -3,10 +3,12 @@ import * as IdentityRepository from "../identity/identity.repository.js";
 import { BadRequestError } from "@nexus/errors";
 import checkOtpRestrictions from "../../utils/otp/checkOtpRestrictions.js";
 import {
+  AuthDomainEventTypes,
   createEventMetadata,
-  DomainEventTypes,
-  OtpPurpose,
-} from "../../events/eventTypes.js";
+} from "@nexus/event-contracts";
+import { OtpPurpose } from "../../events/otp.js";
+import { emitDomainEvent } from "@nexus/kafka";
+import { prisma } from "../../lib/prisma.js";
 import trackOtpRequests from "../../utils/otp/trackOtpRequests.js";
 import { hashPassword } from "../../utils/passwordHandler.js";
 import config from "../../config/index.js";
@@ -14,7 +16,6 @@ import generateOtp from "../../utils/otp/generateOtp.js";
 import { redisClient } from "../../config/redis.js";
 import { v5 as uuidv5 } from "uuid";
 import { UserRoles } from "../../generated/prisma/enums.js";
-import { emitDomainEvent } from "../../events/outboxWriter.js";
 
 const DNS_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 
@@ -73,15 +74,17 @@ const customerRegisterRequest = async (
 
   const aggregateId = uuidv5(email, DNS_NAMESPACE);
 
-  await emitDomainEvent({
-    eventType: DomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
-    aggregateId,
-    payload: {
-      firstName,
-      email,
-      otp,
-    },
-    metadata: createEventMetadata(),
+  await prisma.$transaction(async (tx) => {
+    await emitDomainEvent(tx, {
+      eventType: AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
+      aggregateId,
+      payload: {
+        firstName,
+        email,
+        otp,
+      },
+      metadata: createEventMetadata("auth-service"),
+    });
   });
 };
 
