@@ -25,8 +25,9 @@ async function main(): Promise<void> {
     // Connect the producer once at startup through the service's EventBus, so
     // a broker misconfiguration fails fast here rather than on first publish.
     if (eventBus) {
-      await eventBus.connect();
-      logger.info("Kafka producer connected successfully.");
+      await eventBus
+        .connect()
+        .then(() => logger.info("Kafka producer connected successfully."));
 
       // Start the outbox poller to process pending events
       await startOutboxPoller();

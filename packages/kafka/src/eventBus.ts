@@ -32,9 +32,7 @@ export interface SubscribeMessageContext {
   partition: number;
   offset: string;
   key: string | null;
-  /** All message headers, string-decoded. */
   headers: KafkaMessageHeaders;
-  /** Convenience: the `traceparent` header, when present. */
   traceparent?: string;
 }
 
@@ -109,7 +107,7 @@ export function createKafkaClient(options: KafkaClientOptions): {
   kafka: Kafka;
   producer: ReturnType<Kafka["producer"]>;
 } {
-  const rejectUnauthorized = options.sslRejectUnauthorized ?? true;
+  const rejectUnauthorized = options.sslRejectUnauthorized ?? false;
   const mechanism = options.saslMechanism ?? "scram-sha-256";
 
   const kafka = new Kafka({
