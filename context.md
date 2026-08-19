@@ -102,3 +102,58 @@ metadata:   { emittedAt: string; source: string; version: number }
 - Step 1: ✅ complete (findings above).
 - Steps 2-6: ⏸ blocked on user confirmation of the 3 open questions + audit sign-off.
 - No files changed yet.
+
+---
+
+## MIGRATION COMPLETE (Steps 2-6 realized)
+
+### Resolved open questions (user decisions via ask)
+1. **Placeholder events** → DROP entirely (no producer). Canonical contract keeps
+   only: auth `EMAIL_VERIFICATION_OTP_SENT`, `PASSWORD_RESET_REQUESTED`,
+   `SELLER_PROFILE_REQUESTED`, `CUSTOMER_PROFILE_REQUESTED`; user
+   `USER_REGISTERED`; DLQ `DEAD_LETTER_EVENT`. `seller/customer.profile.created`
+   and all unused `user.*`/`order.*`/`payment.*` types removed.
+2. **`aggregateId` strictness** → `z.uuid()` (production-grade; auth
+   `uuidv5(email, DNS)` is a valid uuid).
+3. **auth call-site `tx`** → each of the 5 `emit` sites wrapped in
+   `prisma.$transaction(async (tx) => { await emitDomainEvent(tx, {...}) })`.
+
+### What shipped
+- `@nexus/event-contracts`: `envelope.ts` (EventMetadataSchema,
+  DomainEventEnvelopeSchema, createEventMetadata(source)), `topics.ts`
+  (KafkaTopics), `events/{auth,user,dlq}-events.ts`, zero-logic `index.ts`.
+  No top-level merged `DomainEventTypes` — services use `AuthDomainEventTypes`/
+  `UserDomainEventTypes`/`DLQEventTypes`.
+- `@nexus/kafka`: `topicRouter.ts` (resolveTopic: DLQ→DLQ else DOMAIN_EVENTS);
+  `outboxWriter.ts` (writeOutboxEvent/emitDomainEvent requiring `tx: unknown`,
+  internal cast to minimal `outboxEvent.create`; persists ONLY `payload` —
+  existing wire behavior; records `metadata` for caller symmetry, not persisted).
+  Barrel exports both.
+- auth: `events/otp.ts` (OtpPurpose/TOtpPurpose) — 3 OTP utils import it;
+  `outboxWriter.ts` re-exports shared writer; `outboxPoller.ts` uses shared
+  resolveTopic; `auth.service.ts` + `customer.service.ts` use shared writer with
+  real `tx`; deleted `events/eventTypes.ts`.
+- user: `user.service.ts` imports shared writer + `UserDomainEventTypes`, drops
+  dangling `emitNotificationEvent`/unused `NotificationTypes`; `outboxPoller.ts`
+  uses shared resolveTopic; deleted `events/eventTypes.ts` + `events/outboxWriter.ts`.
+- notification: `domain-event.schemas.ts` sources `DomainEventNames` + registry
+  keys from canonical `AuthDomainEventTypes`/`UserDomainEventTypes`; keeps local
+  strict Zod wire validator + template registry.
+
+### Verification
+- `pnpm --filter @nexus/event-contracts check-types` PASS.
+- `pnpm --filter @nexus/kafka check-types` PASS; `pnpm --filter @nexus/kafka test` → 17/17 pass.
+- `tsc --noEmit` PASS: auth-service, notification-service.
+- user-service: `user.service.ts` compiles clean. NOTE: pre-existing
+  `user.repository.ts` errors (Prisma schema/code drift: missing
+  `referralCode`/`actorEmail`/`shopName`/`shopAddresses` fields in generated
+  client) — unrelated to this migration; NOT fixed (out of scope, would be
+  unrelated drift).
+
+### Known follow-up (out of scope, behavior preserved)
+- Latent wire mismatch: producers build the full nested envelope, but
+  `writeOutboxEvent` persists only `event.payload` and `outboxPoller` publishes
+  `event.payload`. So `metadata` never reaches Kafka; a consumer validating the
+  full envelope would reject real messages today. Preserved existing behavior;
+  flag for a later, separate change to either persist/emit the full envelope or
+  relax the consumer to the inner payload.
