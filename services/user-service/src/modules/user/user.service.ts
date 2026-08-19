@@ -5,12 +5,10 @@ import type { CreateUserProfileDTO, UserResponseDTO } from "./user.dto.js";
 import * as UserRepository from "./user.repository.js";
 import {
   emitDomainEvent,
-  emitNotificationEvent,
-} from "../../events/outboxWriter.js";
+} from "@nexus/kafka";
 import {
-  DomainEventTypes,
-  NotificationTypes,
-} from "../../events/eventTypes.js";
+  UserDomainEventTypes,
+} from "@nexus/event-contracts";
 
 // ─── Domain Constants ───
 
@@ -95,7 +93,7 @@ export async function createUserProfile(
     });
 
     await emitDomainEvent(tx, {
-      eventType: DomainEventTypes.USER_REGISTERED,
+      eventType: UserDomainEventTypes.USER_REGISTERED,
       aggregateId: user.id,
       payload: {
         userId: user.id,
