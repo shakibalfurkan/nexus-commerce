@@ -19,6 +19,7 @@ import type {
 } from "./email-provider.interface.js";
 import { EmailProviderError } from "./email-provider.error.js";
 import logger from "../utils/logger.js";
+import { AppError } from "@nexus/errors";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 
@@ -49,10 +50,10 @@ export class ResendEmailProvider implements EmailProvider {
 
   constructor(options: ResendEmailProviderOptions) {
     if (!options.apiKey) {
-      throw new Error("ResendEmailProvider: apiKey is required");
+      throw new AppError(400, "ResendEmailProvider: apiKey is required");
     }
     if (!options.fromEmail) {
-      throw new Error("ResendEmailProvider: fromEmail is required");
+      throw new AppError(400, "ResendEmailProvider: fromEmail is required");
     }
     this.apiKey = options.apiKey;
     this.fromEmail = options.fromEmail;

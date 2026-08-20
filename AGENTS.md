@@ -20,6 +20,7 @@ Render.
   layer + interface only.
 - Shared packages only when 2+ services actually consume them — justify in one
   line.
+- Always use camelCase for file names where possible.
 
 ## Security
 

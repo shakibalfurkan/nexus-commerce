@@ -7,12 +7,12 @@ import { retryWithBackoff } from "../resilience/backoff.js";
 import type { BackoffOptions } from "../resilience/backoff.js";
 import { claimNotification } from "../idempotency/idempotency.js";
 import type { ClaimNotificationInput } from "../idempotency/idempotency.js";
-import { markAsSent, markAsFailed } from "./notification-log.js";
+import { markAsSent, markAsFailed } from "./notificationLog.js";
 import { routeToDlq } from "./dlq.js";
 import {
   isHandledDomainEvent,
   getEventRegistryEntry,
-} from "../events/domain-event.schemas.js";
+} from "../events/domainEvent.schemas.js";
 import { isTemplateKey, renderTemplate } from "../templates/template-engine.js";
 import type { IncomingNotificationMessage } from "../types/kafka-message.types.js";
 import logger from "../utils/logger.js";

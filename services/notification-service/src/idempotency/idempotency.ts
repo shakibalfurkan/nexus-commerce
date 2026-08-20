@@ -10,10 +10,6 @@ import logger from "../utils/logger.js";
  * duplicate delivery arrives, the unique constraint on `eventId` raises a
  * Prisma P2002, which we catch and treat as "already processed" — the
  * duplicate is silently skipped.
- *
- * The caller (M5 service layer) MUST update the log to SENT/FAILED after
- * processing. The M4 resilience engine handles retry scheduling and DLQ
- * routing based on `attemptCount` / `maxRetries`.
  */
 
 // ─── Types ───

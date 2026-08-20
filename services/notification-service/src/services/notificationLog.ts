@@ -9,7 +9,7 @@ import logger from "../utils/logger.js";
  * NotificationLog infrastructure functions — DB operations for updating
  * notification status after the idempotency claim. These are infrastructure
  * adapters (they use Prisma directly); the service layer calls them by
- * function signature, never importing Prisma itself (`.clinerules` §4).
+ * function signature, never importing Prisma itself.
  */
 
 /**

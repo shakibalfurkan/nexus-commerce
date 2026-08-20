@@ -1,7 +1,5 @@
 /**
- * Kafka topic constants. Only two topics exist (5-topic Aiven free-tier cap);
- * prior COMMANDS/NOTIFICATIONS keys were removed as dead config referencing
- * non-existent topics.
+ * Kafka topic constants.
  */
 export const KafkaTopics = {
   DOMAIN_EVENTS: "domain-events",

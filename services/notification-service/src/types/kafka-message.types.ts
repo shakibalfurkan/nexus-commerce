@@ -2,7 +2,7 @@ import { ValidationError } from "@nexus/errors";
 import {
   DomainEventSchema,
   type TDomainEvent,
-} from "../events/domain-event.schemas.js";
+} from "../events/domainEvent.schemas.js";
 
 /**
  * Typed container that binds a validated Kafka event body to its trace

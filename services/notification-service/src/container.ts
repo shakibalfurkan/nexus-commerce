@@ -3,8 +3,8 @@ import { EmailProviderError } from "./providers/email-provider.error.js";
 import { createCircuitBreaker } from "./resilience/circuit-breaker.js";
 import { createRateLimiter } from "./ratelimit/rate-limiter.js";
 import { createBackoffOptions } from "./resilience/backoff.js";
-import { NotificationService } from "./services/notification-service.js";
-import { startDomainEventConsumer } from "./events/domain-event.consumer.js";
+import { NotificationService } from "./services/notificationService.js";
+import { startDomainEventConsumer } from "./events/domainEvent.consumer.js";
 import config from "./config/index.js";
 
 /**

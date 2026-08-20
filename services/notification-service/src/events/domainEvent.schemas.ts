@@ -1,7 +1,13 @@
 import { z } from "zod";
 import {
   AuthDomainEventTypes,
+  EmailVerificationOtpEventSchema,
+  PasswordResetRequestedEventSchema,
   UserDomainEventTypes,
+  UserRegisteredEventSchema,
+  type EmailVerificationOtpEvent,
+  type PasswordResetRequestedEvent,
+  type UserRegisteredEvent,
 } from "@nexus/event-contracts";
 /**
  * Wire-accurate Kafka event schemas for the `domain-events` topic.
@@ -19,8 +25,6 @@ import {
  * (header binding in `src/types/kafka-message.types.ts`).
  */
 
-
-
 // ─── Domain Event Names ───
 
 export const DomainEventNames = [
@@ -36,49 +40,6 @@ export const DomainEventNames = [
  */
 export const DomainEventNameSchema = z.enum(DomainEventNames);
 export type TDomainEventName = z.infer<typeof DomainEventNameSchema>;
-
-// ─── Individual Event Schemas (payloads intentionally strict — boundary) ───
-
-export const EmailVerificationOtpEventSchema = z.object({
-  eventType: z.literal("email.verification.otp.sent"),
-  aggregateId: z.uuid(),
-  payload: z.object({
-    email: z.email(),
-    otp: z.string(),
-  }),
-});
-
-export type EmailVerificationOtpEvent = z.infer<
-  typeof EmailVerificationOtpEventSchema
->;
-
-export const PasswordResetRequestedEventSchema = z.object({
-  eventType: z.literal("password.reset.requested"),
-  aggregateId: z.uuid(),
-  payload: z.object({
-    email: z.email(),
-    resetUiLink: z.string(),
-  }),
-});
-
-export type PasswordResetRequestedEvent = z.infer<
-  typeof PasswordResetRequestedEventSchema
->;
-
-export const UserRegisteredEventSchema = z.object({
-  eventType: z.literal("user.registered"),
-  aggregateId: z.uuid(),
-  payload: z.object({
-    userId: z.uuid(),
-    email: z.email(),
-    role: z.string(),
-    firstName: z.string(),
-    lastName: z.string(),
-    createdAt: z.iso.datetime(),
-  }),
-});
-
-export type UserRegisteredEvent = z.infer<typeof UserRegisteredEventSchema>;
 
 // ─── Discriminated Union (Kafka boundary validation) ───
 
