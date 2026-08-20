@@ -1,159 +1,124 @@
-# Event Contract Consolidation — Work State
+# Nexus — Logger Production-Hardening (TODO.md task) — Working Context
 
-> Resumable across sessions. Status reflects audit (Step 1) complete; Steps 2-6
-> NOT started (blocked on user confirmation of findings per TODO.md).
+Last updated: 2026-08-20
+Status: STEP 1–3 COMPLETE & VERIFIED. STEP 4 (commits) PENDING — awaiting
+commit scope decision (see Pending below).
 
 ## Goal
-Consolidate duplicated/inconsistent domain-event contracts + outbox logic across
-auth-service, user-service, packages/event-contracts, and packages/kafka. Includes
-a real correctness bug fix (auth outbox `tx` must be REQUIRED, no global fallback).
+Per TODO.md: harden `@nexus/logger` (Winston, staying on Winston) for production
+correctness on ephemeral-filesystem hosting, restructure single `index.ts` into
+per-concern files, add structural (format-level) redaction, gate file transports
+OFF by default via `ENABLE_FILE_LOGGING`, and add a request-context child-logger
+helper. No service-facing API changes intended (`createLogger`/`createMorganStream`
+signatures preserved).
 
-## Repo map (audited files)
-- `packages/event-contracts/src/index.ts` — FLAT envelope + per-event schemas + `createEventEnvelope`.
-- `packages/kafka/src/{types,index,eventBus,deadLetter,outboxPoller}.ts` — shared Kafka infra; barrel-only `index.ts`.
-- `services/auth-service/src/events/{eventTypes,outboxWriter,eventBus,outboxPoller}.ts`
-- `services/user-service/src/events/{eventTypes,outboxWriter,eventBus,outboxPoller}.ts`
-- `services/notification-service/src/events/domain-event.schemas.ts` + `src/types/kafka-message.types.ts` + `src/events/domain-event.consumer.ts` + `src/services/dlq.ts`
+## Step 1 — Audit Findings
 
----
+### A. Deployment targets (persistent disk?)
+- No `render.yaml`, `Dockerfile`, `docker-compose`, `.github/workflows`, or any
+  infra/CI config exists in the repo. Deployment target is NOT pinned by code.
+- AGENTS.md states: "Free-tier only, no card on file: Neon/Aiven Postgres,
+  Aiven Kafka (5-topic cap), Upstash Redis (shared), Resend, Render."
+  → All backend services target **Render free-tier containers**, which have an
+  **EPHEMERAL filesystem** (all 4 services: api-gateway, auth-service,
+  user-service, notification-service).
+- Conclusion: NONE of the services have persistent disk. DailyRotateFile writes
+  to `process.cwd()/logs/...` are lost on every redeploy/restart. Current code
+  only skips file transports on Vercel/Lambda (`isServerless`), so on Render the
+  file transports are ACTIVE but pointless (writes vanish) AND cost disk I/O /
+  open file handles for nothing.
+- Decision (user-confirmed 2026-08-20 "gate OFF via env var, keep code"):
+  DEFAULT OFF via `ENABLE_FILE_LOGGING` (explicit opt-in), matching STEP 2 /
+  REQUIREMENTS. Keeps a local-dev escape hatch; no code removed.
 
-## STEP 1 — AUDIT FINDINGS (final)
+### B. Sensitive fields currently logged?
+Surveyed every `logger.{info,warn,error,debug,http}(...)` call with a meta object
+across `services/` (auth, user, notification, api-gateway). No call site logs a
+raw password, token string, or authorization header value. Specifics:
+- `auth.service.ts:237` logs `{ requestId, error }` on registration failure;
+  `userData` is spread into the *internal signature request body* but NOT into
+  the log (password was already destructured out at :200). Safe.
+- `globalErrorHandler.ts` (all 4 services) logs `logMetadata` =
+  `{statusCode, errorType, isOperational, method, path, ip, requestId}` + `error`
+  + `stack`. `error`/`stack` are Error objects (no secrets). `ip` is PII-bearing
+  but low-risk and standard; redaction covers it only if key-named.
+- `prisma.ts` slow-query logs emit `{ query, params, duration, target }`. Prisma
+  `params` are positional `$1,$2,...` (values NOT interpolated), so they do not
+  leak password plaintext. Acceptable.
+- `resend-email.provider.ts:125` logs `{ messageId, to, subject }` — `to` is
+  recipient email (PII). Structural redaction key-match will NOT hit `to`, so it
+  stays logged (acceptable: standard; flag only).
 
-### F1. THREE envelope shapes; only ONE is real (the nested `metadata` shape)
-| Source | Envelope shape | Status |
-|---|---|---|
-| `event-contracts` `index.ts` | FLAT: `eventId, eventType, eventVersion, occurredAt, producer, correlationId?, causationId?, traceparent?, payload` | **DEAD CODE** — never imported anywhere at runtime |
-| auth `eventTypes.ts` | `eventType, aggregateId, payload, metadata:{emittedAt, source, version}` | **LIVE / wire** |
-| user `eventTypes.ts` | same nested shape | **LIVE / wire** |
-| notification `domain-event.schemas.ts` | same nested shape (`aggregateId`, `payload`, `metadata:{emittedAt, source, version}`); strict `z.uuid()`/`z.email()`/`z.iso.datetime()` | **LIVE / wire (consumer)** |
-| `packages/kafka/deadLetter.ts` | builds nested `metadata` shape for DLQ | **LIVE** |
+### C. Redaction key set required (case-insensitive, recursive walk)
+password, pass, pwd, token, apiKey, api_key, secret, authorization, auth, otp,
+code, cardNumber, card_number, cardnumber, creditCard, credit_card, cvv,
+pin, resetToken, reset_token, refreshToken, refresh_token, accessToken,
+access_token, bearer, cookie, set-cookie, sessionId, session, privateKey,
+private_key, ssn. Mask value → "[REDACTED]". Also mask nested objects/arrays
+recursively. Apply as a Winston format BEFORE transports (runs for every
+transport, not opt-in per call site).
 
-- `event-contracts` is imported ONLY for `KafkaTopics` + `DLQEventTypes` (grep-confirmed: 0 imports of `DomainEventSchema`/`*EventSchema`/`createEventEnvelope` outside its own `index.ts`).
-- `createEventEnvelope()` helper in event-contracts is unused.
-- **Conclusion:** the nested `metadata:{emittedAt, source, version}` shape is the real wire format (producers + consumer + DLQ all agree). The TODO's canonical recommendation (`eventType, aggregateId, payload, metadata:{emittedAt, source, version}`) is correct. The flat `eventId/producer/occurredAt/eventVersion/correlationId/causationId` variant must be deleted entirely.
+### D. Service dependency on file logs?
+- Grep for `logs/`, `readdir`, `readFile`, `fs.readFile` reading `.log` in
+  `services/` → ZERO matches. No monitoring script reads log files off disk.
+- Safe to default file transports OFF. No service will silently break.
 
-### F2. Schema-strictness inconsistencies (must reconcile in Step 2)
-- `aggregateId`: auth `eventTypes` uses `z.string()` (loose); user `eventTypes` uses `z.uuid()`; notification uses `z.uuid()`. Standardize on `z.string()` for the shared contract? Recommend `z.string()` to avoid breaking auth's `uuidv5(email,...)` (valid uuid) — actually uuidv5 IS a uuid, so `z.uuid()` is fine. Decide: use `z.string()` to be permissive at the boundary OR `z.uuid()`. **Flag for user.** Default: `z.string()` to match the loosest producer and not reject any existing valid aggregateId.
-- Per-field payload validations differ (notification stricter: `z.email()`, `z.iso.datetime()`). The shared contract should define payload shapes; notification's stricter consumer-side validation can stay local (it's its own boundary concern). See F5.
+## Step 2–3 Status (implemented + verified)
 
-### F3. CRITICAL BUG — auth `tx` is OPTIONAL with global fallback (real, in action)
-- `auth-service/src/events/outboxWriter.ts`:
-  `writeOutboxEvent(event, tx?, traceparent?)` → `const prismaClient = tx ? tx : prisma;` then writes via `prismaClient.outboxEvent.create`.
-- All 5 auth call sites call `emitDomainEvent({...})` with NO `tx`:
-  - `auth.service.ts:178` (registerRequest), `:306` (resendOtp)
-  - `auth.service.ts:569` (requestPasswordReset)
-  - `auth.service.ts:649` (provisionSeller), `:686` (provisionCustomer)
-  - `customer.service.ts:76` (registerCustomer/otp path)
-- Impact: outbox insert runs on the GLOBAL `prisma` client, NOT inside any business transaction → breaks atomicity guarantee. A business write can commit while the outbox insert fails (or vice-versa), losing the event or double-emitting. This is exactly the bug the TODO describes.
-- Fix (Step 4): make `tx` REQUIRED, delete the `prisma` import + fallback. `emitDomainEvent(tx, event, traceparent?)`.
+Files created/modified under `packages/logger/src/`:
+- `types.ts` — LoggerConfig, Logger (added `child` method for context helper),
+  MorganStream. No `any`; explicit Winston types.
+- `format.ts` — `consoleFormat` (colorized dev) + `fileFormat` (JSON prod),
+  unchanged logic from original index.ts.
+- `redaction.ts` — `DEFAULT_REDACT_KEYS` (31 keys, case-insensitive) +
+  recursive `redactValue` + `redactionFormat(extraKeys?)` Winston format. Uses
+  `Record<string,true>` lookup (project rule: static string-keyed → Record, not
+  Set); no trivial one-line wrappers.
+- `transports.ts` — `buildTransports(config)`: Console ALWAYS present; the 3
+  DailyRotateFile transports ONLY when `ENABLE_FILE_LOGGING=true` (default OFF),
+  with comment explaining ephemeral Render hosting. Removed old `isServerless`
+  gate.
+- `context.ts` — `withRequestContext(logger, {requestId?, correlationId?,
+  traceId?})` → `logger.child(...)`. (The `bindRequestContext` alias was dropped
+  as a trivial rename — project rule.)
+- `logger.ts` — `createLogger` + `createMorganStream` (signatures unchanged).
+  Wires `redactionFormat()` into the pipeline BEFORE `fileFormat`, applied to
+  every transport. Keeps defaultMeta + unhandledRejection/uncaughtException.
+- `index.ts` — barrel re-exporting all submodules; old single-file logic removed.
 
-### F4. Signature order differs
-- auth: `(event, tx?, traceparent?)` — reversed.
-- user: `(tx, event, traceparent?)`.
-- Canonical (TODO Step 4): `(tx, event, traceparent?)`. Auth call sites must be reordered + given a real `tx` (see F3/F6).
+Verification:
+- `packages/logger` `check-types` (tsc --noEmit) → clean.
+- `api-gateway`, `auth-service`, `notification-service` `build` (tsc) → clean
+  against the new barrel (createLogger/createMorganStream imports intact).
+- `user-service` `build` → FAILS with 48 PRE-EXISTING errors confined to Prisma
+  repositories (user.repository.ts, auditLog.repository.ts,
+  sellerProfile.repository.ts, shopAddress.repository.ts, user.dto.ts) — schema /
+  generated-client drift, NONE in logger-consuming files. Confirmed
+  `user.repository.ts` does NOT import `@nexus/logger`. Logger restructure is NOT
+  the cause. Flagged, not fixed (out of scope; not introduced by this task).
+- No service reads `logs/` off disk → gating file transports OFF breaks nothing.
 
-### F5. `resolveTopic` — duplicated per-service map, trivially collapsible
-- auth `outboxWriter.ts` + user `outboxWriter.ts` each define an `eventTopicMap` + `resolveTopic` that is identical in behavior: every key → `DOMAIN_EVENTS`, `dead_letter.event` → `DLQ`.
-- Both already fall back to `DOMAIN_EVENTS` for unknown types, so the map is pure noise.
-- README/ADR note: a prior author already deleted `COMMANDS`/`NOTIFICATIONS` topic keys (they referenced non-existent `KafkaTopics` — only `DOMAIN_EVENTS` + `DLQ` exist).
-- Fix (Step 3): one shared `resolveTopic(eventType)` in `packages/kafka`, importing `KafkaTopics` + `DLQEventTypes` from event-contracts. Delete both per-service maps.
+Step 4 (service call-site fixes): NONE required — audit found no call site logs
+raw secrets/PII. Redaction is structural defense-in-depth.
 
-### F6. Real vs PLACEHOLDER events (do NOT invent payloads for placeholders)
-**auth-service — ACTUALLY EMITTED (producers exist):**
-- `email.verification.otp.sent` (3 sites)
-- `password.reset.requested`
-- `seller.profile.requested`
-- `customer.profile.requested`
+## Pending / Uncommitted
+- All changes are uncommitted working-tree edits. TODO.md Step 4 asks 4 logical
+  commits: (1) audit report (context.md), (2) restructure+redaction+gating,
+  (3) child-context helper, (4) service call-site fixes (N/A — no fixes needed).
+- IMPORTANT: the working tree ALSO contains unrelated prior modifications
+  (AGENTS.md, event-contracts/topics.ts, a notification-service refactor,
+  pnpm-lock drift). Commits MUST be scoped to logger work only to avoid bundling
+  unrelated changes. The logger-work file set to stage:
+  - packages/logger/src/index.ts (modified)
+  - packages/logger/src/{types,format,redaction,transports,context,logger}.ts (new)
+  - Optionally context.md (audit report) as its own commit.
+- No commits made yet. Awaiting user go-ahead / scope on committing.
 
-**auth-service — DEFINED but NEVER EMITTED (placeholder):** `seller.profile.created`, `customer.profile.created`. No producer code. → FLAG, don't invent payload; consider dropping from canonical contract or keeping schema-only with a clear "no producer yet" note. **Flag for user.**
-
-**user-service — ACTUALLY EMITTED:** `user.registered` (in `createUserProfile`, correctly inside `$transaction` with `tx`).
-
-**user-service — DEFINED but NEVER EMITTED (placeholder):** `user.deleted`, `user.hard_deleted`, `user.restored`, `user.profile_updated`, `user.password_changed`, `user.email_changed`, `user.role_changed`, `user.locked`, `user.unlocked`, `order.placed`, `payment.succeeded`. NOTE: `deleteUser`/`hardDeleteUser`/`restoreUser` exist but only write audit logs — they do NOT call `emitDomainEvent` at all. → FLAG, don't invent payloads. **Flag for user.**
-
-**notification-service — CONSUMES:** `email.verification.otp.sent`, `password.reset.requested`, `user.registered` (its `DomainEventNames` + registry). Matches real producers.
-
-### F7. BROKEN/DANGLING import in user-service
-- `user.service.ts:7-9` imports `emitNotificationEvent` from `../../events/outboxWriter.js`.
-- `outboxWriter.ts` exports ONLY `resolveTopic`, `writeOutboxEvent`, `emitDomainEvent`. No `emitNotificationEvent` exists anywhere in the repo (grep-confirmed: 0 definitions, 0 calls).
-- This is a dangling import → user-service currently does NOT type-check/build cleanly (or `emitNotificationEvent` is `undefined` at runtime if TS is lenient). Must be resolved in Step 5 (remove the unused import).
-
-### F8. notification-service registry is local business logic — keep local
-- `domainEventRegistry` (templateKey / extractRecipient / getSubject) is notification's own rendering logic, NOT a shared contract. Per TODO Step 5: keep local, but import the EVENT TYPES/shapes it switches on from `@nexus/event-contracts` rather than redefining. Currently it has its own copy of the nested-shape schemas → should import the canonical nested-shape schemas from the restructured event-contracts.
-
----
-
-## Canonical envelope decision (TODO recommendation — endorsed by F1)
-```
-eventType:  string (literal per event)
-aggregateId: string            // permissive by default (see F2)
-payload:    <per-event object>
-metadata:   { emittedAt: string; source: string; version: number }
-```
-- `traceparent` is NOT in the body — it travels in Kafka HEADERS; outbox writer keeps it as a separate param + column.
-- Delete flat `eventId/producer/occurredAt/eventVersion/correlationId/causationId` from event-contracts.
-
-## Open questions for user (blocking Step 2)
-1. **Placeholder events** (`seller.profile.created`, `customer.profile.created`, and the 9 unused `user.*` types + `order.placed`/`payment.succeeded`): include schema-only in the canonical contract (clearly marked "no producer yet") or drop them entirely? My recommendation: drop `seller/customer.profile.created` (no producer, and per AGENTS.md no payment/order service exists yet → drop `order.placed`/`payment.succeeded`); keep `user.*` delete/restore/types as schema-only markers OR drop — recommend DROP the unused `user.*` ones too, since no producer + no consumer. Awaiting your call.
-2. **`aggregateId` strictness** (F2): `z.string()` (permissive, matches loosest producer) vs `z.uuid()` (matches user/notification). Recommend `z.string()` to avoid rejecting valid aggregateIds at the contract boundary.
-3. **auth call-site `tx`** (F3/F6): auth currently emits outside any transaction. Making `tx` REQUIRED means wrapping each emit in a `prisma.$transaction` (or passing the tx from an enclosing transaction). Confirm approach: wrap each of the 5 auth emit sites in `prisma.$transaction(async (tx) => { ...emitDomainEvent(tx, ...) })`.
-
-## State
-- Step 1: ✅ complete (findings above).
-- Steps 2-6: ⏸ blocked on user confirmation of the 3 open questions + audit sign-off.
-- No files changed yet.
-
----
-
-## MIGRATION COMPLETE (Steps 2-6 realized)
-
-### Resolved open questions (user decisions via ask)
-1. **Placeholder events** → DROP entirely (no producer). Canonical contract keeps
-   only: auth `EMAIL_VERIFICATION_OTP_SENT`, `PASSWORD_RESET_REQUESTED`,
-   `SELLER_PROFILE_REQUESTED`, `CUSTOMER_PROFILE_REQUESTED`; user
-   `USER_REGISTERED`; DLQ `DEAD_LETTER_EVENT`. `seller/customer.profile.created`
-   and all unused `user.*`/`order.*`/`payment.*` types removed.
-2. **`aggregateId` strictness** → `z.uuid()` (production-grade; auth
-   `uuidv5(email, DNS)` is a valid uuid).
-3. **auth call-site `tx`** → each of the 5 `emit` sites wrapped in
-   `prisma.$transaction(async (tx) => { await emitDomainEvent(tx, {...}) })`.
-
-### What shipped
-- `@nexus/event-contracts`: `envelope.ts` (EventMetadataSchema,
-  DomainEventEnvelopeSchema, createEventMetadata(source)), `topics.ts`
-  (KafkaTopics), `events/{auth,user,dlq}-events.ts`, zero-logic `index.ts`.
-  No top-level merged `DomainEventTypes` — services use `AuthDomainEventTypes`/
-  `UserDomainEventTypes`/`DLQEventTypes`.
-- `@nexus/kafka`: `topicRouter.ts` (resolveTopic: DLQ→DLQ else DOMAIN_EVENTS);
-  `outboxWriter.ts` (writeOutboxEvent/emitDomainEvent requiring `tx: unknown`,
-  internal cast to minimal `outboxEvent.create`; persists ONLY `payload` —
-  existing wire behavior; records `metadata` for caller symmetry, not persisted).
-  Barrel exports both.
-- auth: `events/otp.ts` (OtpPurpose/TOtpPurpose) — 3 OTP utils import it;
-  `outboxWriter.ts` re-exports shared writer; `outboxPoller.ts` uses shared
-  resolveTopic; `auth.service.ts` + `customer.service.ts` use shared writer with
-  real `tx`; deleted `events/eventTypes.ts`.
-- user: `user.service.ts` imports shared writer + `UserDomainEventTypes`, drops
-  dangling `emitNotificationEvent`/unused `NotificationTypes`; `outboxPoller.ts`
-  uses shared resolveTopic; deleted `events/eventTypes.ts` + `events/outboxWriter.ts`.
-- notification: `domain-event.schemas.ts` sources `DomainEventNames` + registry
-  keys from canonical `AuthDomainEventTypes`/`UserDomainEventTypes`; keeps local
-  strict Zod wire validator + template registry.
-
-### Verification
-- `pnpm --filter @nexus/event-contracts check-types` PASS.
-- `pnpm --filter @nexus/kafka check-types` PASS; `pnpm --filter @nexus/kafka test` → 17/17 pass.
-- `tsc --noEmit` PASS: auth-service, notification-service.
-- user-service: `user.service.ts` compiles clean. NOTE: pre-existing
-  `user.repository.ts` errors (Prisma schema/code drift: missing
-  `referralCode`/`actorEmail`/`shopName`/`shopAddresses` fields in generated
-  client) — unrelated to this migration; NOT fixed (out of scope, would be
-  unrelated drift).
-
-### Known follow-up (out of scope, behavior preserved)
-- Latent wire mismatch: producers build the full nested envelope, but
-  `writeOutboxEvent` persists only `event.payload` and `outboxPoller` publishes
-  `event.payload`. So `metadata` never reaches Kafka; a consumer validating the
-  full envelope would reject real messages today. Preserved existing behavior;
-  flag for a later, separate change to either persist/emit the full envelope or
-  relax the consumer to the inner payload.
+## Resume Instructions
+- If resuming after a break: logger refactor is done & typechecks; only Step 4
+  commits remain. Re-read `packages/logger/src/*` and this file; no re-audit
+  needed unless deployment assumptions change.
+- Build check command: `pnpm -C packages/logger check-types` and
+  `pnpm -C services/<svc> build` (note user-service has pre-existing Prisma
+  type errors unrelated to this work).
+- No destructive ops performed.
