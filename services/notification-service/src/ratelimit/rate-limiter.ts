@@ -103,16 +103,41 @@ export class SlidingWindowRateLimiter {
     const now = Date.now();
     const ttlMs = this.windowMs + 1000; // buffer so key survives the window
 
-    const raw = await this.redis.eval(
-      SLIDING_WINDOW_LUA,
-      1,
-      key,
-      String(now),
-      String(this.windowMs),
-      String(this.limit),
-      String(ttlMs),
-      `${now}:${randomUUID()}`,
-    );
+    // ─── Fail-open on Redis errors ───────────────────────────────────────
+    // Rate limiting is a protective layer (guards the email provider against
+    // overload), NOT a security boundary. If Redis is unreachable or times
+    // out, blocking the request would fail CLOSED — taking down notification
+    // delivery (and, upstream, auth OTP flows) on a transient infra blip.
+    // Failing OPEN (allow the request) keeps delivery working; the worst case
+    // is a few extra sends until Redis recovers, which is strictly safer than
+    // dropping legitimate OTPs. This matches the call-site wire-up, where a
+    // null limiter (Redis absent) already means "allow through".
+    let raw: unknown;
+    try {
+      raw = await this.redis.eval(
+        SLIDING_WINDOW_LUA,
+        1,
+        key,
+        String(now),
+        String(this.windowMs),
+        String(this.limit),
+        String(ttlMs),
+        `${now}:${randomUUID()}`,
+      );
+    } catch (error) {
+      // `identifier` is already SHA-256 hashed (no PII); never log the raw
+      // recipient. Log the message only so we keep an audit trail of the blip.
+      logger.error("Rate limiter Redis error — failing open", {
+        identifier,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        allowed: true,
+        remaining: this.limit,
+        limit: this.limit,
+        retryAfterMs: 0,
+      };
+    }
 
     // Lua numbers arrive as strings or numbers depending on ioredis version.
     const result = (Array.isArray(raw) ? raw : []) as unknown[];
