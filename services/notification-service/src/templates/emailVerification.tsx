@@ -1,5 +1,5 @@
 import { Section, Text } from "react-email";
-import { EmailLayout, emailStyles } from "./email-layout.js";
+import { EmailLayout, emailStyles } from "./emailLayout.js";
 
 /**
  * EmailVerificationEmail — OTP verification email.

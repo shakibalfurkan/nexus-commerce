@@ -16,8 +16,8 @@ import type {
   EmailProvider,
   SendEmailCommand,
   SendEmailResult,
-} from "./email-provider.interface.js";
-import { EmailProviderError } from "./email-provider.error.js";
+} from "./emailProviderInterface.js";
+import { EmailProviderError } from "./emailProviderError.js";
 import logger from "../utils/logger.js";
 import { AppError } from "@nexus/errors";
 

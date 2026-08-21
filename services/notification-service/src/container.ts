@@ -1,10 +1,10 @@
-import { ResendEmailProvider } from "./providers/resend-email.provider.js";
-import { EmailProviderError } from "./providers/email-provider.error.js";
+import { ResendEmailProvider } from "./providers/resendEmailProvider.js";
+import { EmailProviderError } from "./providers/emailProviderError.js";
 import { createCircuitBreaker } from "./resilience/circuit-breaker.js";
 import { createRateLimiter } from "./ratelimit/rate-limiter.js";
 import { createBackoffOptions } from "./resilience/backoff.js";
 import { NotificationService } from "./services/notificationService.js";
-import { startDomainEventConsumer } from "./events/domainEvent.consumer.js";
+import { startDomainEventConsumer } from "./events/domainEventConsumer.js";
 import config from "./config/index.js";
 
 /**

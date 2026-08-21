@@ -1,5 +1,5 @@
 import { Button, Text } from "react-email";
-import { EmailLayout, emailStyles } from "./email-layout.js";
+import { EmailLayout, emailStyles } from "./emailLayout.js";
 
 /**
  * WelcomeEmail — Post-registration welcome email.

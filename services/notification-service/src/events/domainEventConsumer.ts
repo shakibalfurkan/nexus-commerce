@@ -1,6 +1,6 @@
 import { KafkaTopics } from "@nexus/event-contracts";
 import type { SubscribeMessageContext } from "@nexus/kafka";
-import { parseKafkaMessage } from "../types/kafka-message.types.js";
+import { parseKafkaMessage } from "../types/kafkaMessageTypes.js";
 import { routePoisonMessage } from "../services/dlq.js";
 import type { NotificationService } from "../services/notificationService.js";
 import { eventBus } from "./eventBus.js";

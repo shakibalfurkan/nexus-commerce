@@ -10,6 +10,6 @@
 
 export * from "./envelope.js";
 export * from "./topics.js";
-export * from "./events/auth-events.js";
-export * from "./events/user-events.js";
-export * from "./events/dlq-events.js";
+export * from "./events/authEvents.js";
+export * from "./events/userEvents.js";
+export * from "./events/dlqEvents.js";

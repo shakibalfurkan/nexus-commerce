@@ -1,5 +1,5 @@
-import type { EmailProvider } from "../providers/email-provider.interface.js";
-import { EmailProviderError } from "../providers/email-provider.error.js";
+import type { EmailProvider } from "../providers/emailProviderInterface.js";
+import { EmailProviderError } from "../providers/emailProviderError.js";
 import type { SlidingWindowRateLimiter } from "../ratelimit/rate-limiter.js";
 import { buildRateLimitKey } from "../ratelimit/rate-limiter.js";
 import type { CircuitBreaker } from "../resilience/circuit-breaker.js";
@@ -12,9 +12,9 @@ import { routeToDlq } from "./dlq.js";
 import {
   isHandledDomainEvent,
   getEventRegistryEntry,
-} from "../events/domainEvent.schemas.js";
+} from "../events/domainEventSchemas.js";
 import { isTemplateKey, renderTemplate } from "../templates/template-engine.js";
-import type { IncomingNotificationMessage } from "../types/kafka-message.types.js";
+import type { IncomingNotificationMessage } from "../types/kafkaMessageTypes.js";
 import logger from "../utils/logger.js";
 
 /**

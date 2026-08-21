@@ -20,7 +20,6 @@ Render.
   layer + interface only.
 - Shared packages only when 2+ services actually consume them — justify in one
   line.
-- Always use camelCase for file names where possible.
 
 ## Security
 
@@ -66,6 +65,15 @@ reserved for storefront marketing/hero moments only.
 TS strict, no bare `any`. No `console.log` in prod — shared logger. No empty
 catches. Structured logs with `requestId`/`correlationId`/`traceId` — never log
 secrets/PII.
+File naming: camelCase for all source files under `apps/`, `services/`,
+`packages/` — never kebab-case or dot-separated words
+(e.g. `resendEmailProvider.ts`, `emailProviderInterface.ts`,
+`kafkaMessageTypes.ts`). Suffix roles MAY stay as a single dot-suffix
+(`.interface`, `.error`, `.types`, `.config`) to mark kind, but the base name
+is camelCase. Exception: React components stay PascalCase `.tsx`; config
+`.json` and framework barrels are out of scope. No filename-lint plugin is
+configured in the toolchain, so this is a documented manual convention —
+enforce on review.
 
 ## Money (placeholder — expand when payment-service exists)
 

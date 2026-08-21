@@ -1,8 +1,8 @@
 import { render } from "@react-email/render";
 import type { ComponentProps, ReactElement } from "react";
 
-import { EmailVerificationEmail } from "./email-verification.js";
-import { PasswordResetEmail } from "./password-reset.js";
+import { EmailVerificationEmail } from "./emailVerification.js";
+import { PasswordResetEmail } from "./passwordReset.js";
 import { WelcomeEmail } from "./welcome.js";
 
 /**
