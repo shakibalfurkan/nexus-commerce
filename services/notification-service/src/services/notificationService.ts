@@ -1,8 +1,8 @@
 import type { EmailProvider } from "../providers/emailProviderInterface.js";
 import { EmailProviderError } from "../providers/emailProviderError.js";
-import type { SlidingWindowRateLimiter } from "../ratelimit/rate-limiter.js";
-import { buildRateLimitKey } from "../ratelimit/rate-limiter.js";
-import type { CircuitBreaker } from "../resilience/circuit-breaker.js";
+import type { SlidingWindowRateLimiter } from "../ratelimit/rateLimiter.js";
+import { buildRateLimitKey } from "../ratelimit/rateLimiter.js";
+import type { CircuitBreaker } from "../resilience/circuitBreaker.js";
 import { retryWithBackoff } from "../resilience/backoff.js";
 import type { BackoffOptions } from "../resilience/backoff.js";
 import { claimNotification } from "../idempotency/idempotency.js";

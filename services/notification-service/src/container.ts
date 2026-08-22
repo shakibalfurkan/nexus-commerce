@@ -1,7 +1,7 @@
 import { ResendEmailProvider } from "./providers/resendEmailProvider.js";
 import { EmailProviderError } from "./providers/emailProviderError.js";
-import { createCircuitBreaker } from "./resilience/circuit-breaker.js";
-import { createRateLimiter } from "./ratelimit/rate-limiter.js";
+import { createCircuitBreaker } from "./resilience/circuitBreaker.js";
+import { createRateLimiter } from "./ratelimit/rateLimiter.js";
 import { createBackoffOptions } from "./resilience/backoff.js";
 import { NotificationService } from "./services/notificationService.js";
 import { startDomainEventConsumer } from "./events/domainEventConsumer.js";
