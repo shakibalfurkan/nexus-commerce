@@ -1,25 +1,23 @@
 import { createServer, type Server } from "http";
 import { createApp } from "./app.js";
 import config from "./config/index.js";
-import { redisClient } from "./config/redis.js";
+import { disconnectRedis, redis } from "./lib/redis.js";
 import { eventBus } from "./events/eventBus.js";
 import { disconnectPrisma, prisma } from "./lib/prisma.js";
 import logger from "./utils/logger.js";
 import { startOutboxPoller, stopOutboxPoller } from "./events/outboxPoller.js";
 
 let server: Server;
+const port = process.env.PORT || config.port;
 
 async function main(): Promise<void> {
   try {
-    // Create app
-    const app = createApp();
-
     // Verify Prisma connection
     await prisma.$connect();
     logger.info("Prisma connected to database.");
 
     // Verify Redis connection
-    await redisClient.ping();
+    await redis!.ping();
     logger.info("Redis Database handshake verified successfully.");
 
     // Connect the producer once at startup through the service's EventBus, so
@@ -36,12 +34,11 @@ async function main(): Promise<void> {
       );
     }
 
+    // Create app
+    const app = createApp();
     server = createServer(app);
-
-    server.listen(config.port, () => {
-      logger.info(
-        `Nexus ${config.serviceName} is running on port ${config.port}`,
-      );
+    server.listen(port, () => {
+      logger.info(`Nexus ${config.serviceName} is running on port ${port}`);
     });
   } catch (err) {
     logger.error("Failed to start server:", err);
@@ -78,11 +75,9 @@ const shutdown = async (signal: string) => {
 
     logger.info("Closing stateful infrastructure channels...");
 
-    // Stop the outbox poller first (no new events while shutting down)
-    await stopOutboxPoller();
-
     await Promise.allSettled([
-      redisClient.quit(),
+      stopOutboxPoller(),
+      disconnectRedis(),
       eventBus ? eventBus.disconnect() : Promise.resolve(),
       disconnectPrisma(),
     ]);
