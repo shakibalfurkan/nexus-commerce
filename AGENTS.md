@@ -20,17 +20,26 @@ Render.
   layer + interface only.
 - Shared packages only when 2+ services actually consume them — justify in one
   line.
+- `src/config/` holds plain settings only (env-derived values, no side effects,
+  no live connections). `src/lib/` holds instantiated clients/resources built
+  from that config (Redis, Prisma, Kafka clients — anything with a connection
+  lifecycle / connect-disconnect). A file that calls `createXClient()` and
+  exports a live instance belongs in `lib/`, never `config/`.
 
 ## Security
 
 Zod validation at every external boundary (HTTP + Kafka payloads). Bcrypt
 passwords, never logged/stored plaintext. Short-lived JWT + refresh rotation.
-Redis sliding-window rate limits on public auth/notification endpoints. Helmet +
-CORS locked to known origins in prod. Escape all HTML/template interpolation.
-Secrets only in env vars, never logs/commits/bundles. Every protected endpoint:
-authenticated → authorized → ownership-checked (no IDOR). Destructive ops
-(force-push, reset --hard, DROP/TRUNCATE, prod mutation, Redis flush) — explicit
-approval + rollback plan, every time.
+Redis sliding-window rate limits on public auth/notification endpoints. Rate
+limiter fails OPEN on Redis errors (connection drop, timeout) — logs the
+failure and allows the request through; rate limiting is a protective layer,
+not a security boundary, and should never block core traffic due to a
+transient Redis issue. Helmet + CORS locked to known origins in prod. Escape
+all HTML/template interpolation. Secrets only in env vars, never
+logs/commits/bundles. Every protected endpoint: authenticated → authorized →
+ownership-checked (no IDOR). Destructive ops (force-push, reset --hard,
+DROP/TRUNCATE, prod mutation, Redis flush) — explicit approval + rollback
+plan, every time.
 
 ## Kafka
 
@@ -65,6 +74,7 @@ reserved for storefront marketing/hero moments only.
 TS strict, no bare `any`. No `console.log` in prod — shared logger. No empty
 catches. Structured logs with `requestId`/`correlationId`/`traceId` — never log
 secrets/PII.
+
 File naming: camelCase for all source files under `apps/`, `services/`,
 `packages/` — never kebab-case or dot-separated words
 (e.g. `resendEmailProvider.ts`, `emailProviderInterface.ts`,
@@ -85,8 +95,9 @@ mutations, verified webhook signatures, never store raw card data.
 Cross-service DB access · secrets outside env vars · wildcard CORS in prod ·
 disabled auth/rate-limits · infinite retries · non-idempotent financial/Kafka
 mutations · missing DLQ · unescaped HTML · destructive DB/git ops without
-approval · unjustified new dependencies. automatic redrive of DEAD events for payment/order domains (manual admin
-review required — automatic redrive is fine for low-stakes domains only)
+approval · unjustified new dependencies · automatic redrive of DEAD events for
+payment/order domains (manual admin review required — automatic redrive is
+fine for low-stakes domains only).
 
 ## Workflow
 
