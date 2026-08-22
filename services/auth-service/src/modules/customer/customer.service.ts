@@ -2,10 +2,8 @@ import type { ICustomerRegisterRequestDTO } from "./customer.interface.js";
 import * as IdentityRepository from "../identity/identity.repository.js";
 import { BadRequestError } from "@nexus/errors";
 import checkOtpRestrictions from "../../utils/otp/checkOtpRestrictions.js";
-import {
-  AuthDomainEventTypes,
-} from "@nexus/event-contracts";
-import { OtpPurpose } from "../../events/otp.js";
+import { AuthDomainEventTypes } from "@nexus/event-contracts";
+import { OtpPurpose } from "../../constant/otp.js";
 import { emitDomainEvent } from "@nexus/kafka";
 import { prisma } from "../../lib/prisma.js";
 import trackOtpRequests from "../../utils/otp/trackOtpRequests.js";

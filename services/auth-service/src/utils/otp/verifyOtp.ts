@@ -1,6 +1,6 @@
 import { redisClient } from "../../config/redis.js";
 import { BadRequestError } from "@nexus/errors";
-import { OtpPurpose, type TOtpPurpose } from "../../events/otp.js";
+import { OtpPurpose, type TOtpPurpose } from "../../constant/otp.js";
 
 const MAX_ATTEMPTS = 3;
 const BLOCK_TIME = 30 * 60;

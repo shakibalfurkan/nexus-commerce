@@ -43,10 +43,8 @@ import {
 import { generateToken } from "../../utils/token/generateToken.js";
 import * as AuthRepository from "../../modules/auth/auth.repository.js";
 import { emitDomainEvent } from "@nexus/kafka";
-import {
-  AuthDomainEventTypes,
-} from "@nexus/event-contracts";
-import { OtpPurpose, type TOtpPurpose } from "../../events/otp.js";
+import { AuthDomainEventTypes } from "@nexus/event-contracts";
+import { OtpPurpose, type TOtpPurpose } from "../../constant/otp.js";
 import verifyToken from "../../utils/token/verifyToken.js";
 import type { JwtPayload } from "jsonwebtoken";
 

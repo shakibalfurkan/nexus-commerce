@@ -1,6 +1,5 @@
 /**
- * OTP purposes — auth-service-specific constant (not a domain event).
- * Relocated from the deleted local `eventTypes.ts`.
+ * OTP purposes — auth-service-specific constant
  */
 export const OtpPurpose = {
   EMAIL_VERIFICATION: "EMAIL_VERIFICATION",
