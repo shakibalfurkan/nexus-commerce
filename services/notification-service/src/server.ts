@@ -1,65 +1,95 @@
-import createApp from "./app.js";
+import { createServer, type Server } from "http";
 import config from "./config/index.js";
-import { startNotificationPipeline } from "./container.js";
-import { disconnectRedis } from "./lib/redis.js";
-import { disconnectPrisma } from "./lib/prisma.js";
+import { disconnectRedis, redis } from "./lib/redis.js";
 import { eventBus } from "./events/eventBus.js";
+import { disconnectPrisma, prisma } from "./lib/prisma.js";
 import logger from "./utils/logger.js";
+import { startNotificationPipeline } from "./container.js";
+import createApp from "./app.js";
 
-const port = process.env.PORT || config.port || "3000";
-
-const SHUTDOWN_TIMEOUT_MS = 10_000;
-
-/**
- * Gracefully shut down: disconnect Kafka, Redis, and Prisma so in-flight
- * writes complete and no connections leak. Cloud (Render) sends SIGTERM on
- * deploy/restart — without this, the process can be killed mid-write.
- */
-async function shutdown(signal: string): Promise<void> {
-  logger.info(`Received ${signal} — shutting down gracefully`);
-
-  const forceExit = setTimeout(() => {
-    logger.error("Graceful shutdown timed out — forcing exit");
-    process.exit(1);
-  }, SHUTDOWN_TIMEOUT_MS);
-  forceExit.unref();
-
-  try {
-    // One EventBus owns both the consumer and the producer, so a single
-    // disconnect drains both (previously two separate helpers).
-    if (eventBus) {
-      await eventBus.disconnect();
-    }
-    await disconnectRedis();
-    await disconnectPrisma();
-    logger.info("Graceful shutdown complete");
-    process.exit(0);
-  } catch (err) {
-    logger.error("Error during graceful shutdown", err);
-    process.exit(1);
-  }
-}
-
-process.on("SIGTERM", () => void shutdown("SIGTERM"));
-process.on("SIGINT", () => void shutdown("SIGINT"));
+let server: Server;
+const port = process.env.PORT || config.port;
 
 async function main(): Promise<void> {
   try {
-    // Create app
-    const app = createApp();
+    // Verify dependencies BEFORE accepting traffic
+    await prisma.$connect();
+    logger.info("Prisma connected to database.");
 
-    // Start server
-    app.listen(port, () => {
+    await redis!.ping();
+    logger.info("Redis Database handshake verified successfully.");
+
+    await startNotificationPipeline(); // Kafka consumer + outbox poller
+
+    const app = createApp();
+    server = createServer(app);
+    server.listen(port, () => {
       logger.info(`Nexus ${config.serviceName} is listening on port: ${port}`);
     });
-
-    // Start Kafka consumer + notification pipeline
-    await startNotificationPipeline();
   } catch (err) {
     logger.error("Failed to start server:", err);
-    // Fail fast — don't run a half-broken server that silently drops events.
     process.exit(1);
   }
 }
+
+// ─── Graceful Shutdown
+const shutdown = async (signal: string) => {
+  logger.info(`${signal} received. Starting graceful shutdown sequence...`);
+
+  const watchdog = setTimeout(() => {
+    logger.error(
+      `Forced shutdown executed. Graceful cleanup timed out after 10s.`,
+    );
+    process.exit(1);
+  }, 10_000);
+
+  watchdog.unref();
+
+  try {
+    if (server) {
+      logger.info("Severing active HTTP connections and stopping listener...");
+
+      server.closeAllConnections();
+
+      await new Promise<void>((resolve) => {
+        server.close(() => {
+          logger.info("HTTP server listener closed successfully.");
+          resolve();
+        });
+      });
+    }
+
+    logger.info("Closing stateful infrastructure channels...");
+
+    await Promise.allSettled([
+      disconnectRedis(),
+      eventBus ? eventBus.disconnect() : Promise.resolve(),
+      disconnectPrisma(),
+    ]);
+
+    logger.info(
+      "All stateful connections closed cleanly. Graceful exit success.",
+    );
+    process.exit(0);
+  } catch (error) {
+    logger.error(
+      "An error occurred during the graceful shutdown sequence:",
+      error,
+    );
+    process.exit(1);
+  }
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught exception:", err);
+  shutdown("uncaughtException");
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled rejection:", reason);
+});
 
 main();
