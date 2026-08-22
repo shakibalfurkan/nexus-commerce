@@ -8,7 +8,9 @@ const config = {
   serviceName: optionalEnv("SERVICE_NAME", "auth-service"),
   port: Number(process.env.PORT) || 5000,
 
-  redis_database_url: requireEnv("REDIS_DATABASE_URL"),
+  redis: {
+    url: process.env.REDIS_DATABASE_URL,
+  },
 
   kafka: {
     broker: requireEnv("KAFKA_BROKER"),

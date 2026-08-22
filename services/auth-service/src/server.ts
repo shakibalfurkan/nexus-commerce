@@ -1,33 +1,29 @@
 import { createServer, type Server } from "http";
 import { createApp } from "./app.js";
 import config from "./config/index.js";
-import { redisClient } from "./config/redis.js";
 import { eventBus } from "./events/eventBus.js";
 import { disconnectPrisma, prisma } from "./lib/prisma.js";
 import logger from "./utils/logger.js";
 import { startOutboxPoller, stopOutboxPoller } from "./events/outboxPoller.js";
+import { disconnectRedis, redis } from "./lib/redis.js";
 
 let server: Server;
 
 async function main(): Promise<void> {
   try {
-    // Create app
-    const app = createApp();
-
     // Verify Prisma connection
     await prisma.$connect();
     logger.info("Prisma connected to database.");
 
     // Verify Redis connection
-    await redisClient.ping();
+    await redis!.ping();
     logger.info("Redis Database handshake verified successfully.");
 
     // Connect the producer once at startup through the service's EventBus, so
     // a broker misconfiguration fails fast here rather than on first publish.
     if (eventBus) {
-      await eventBus
-        .connect()
-        .then(() => logger.info("Kafka producer connected successfully."));
+      await eventBus.connect();
+      logger.info("Kafka producer connected successfully.");
 
       // Start the outbox poller to process pending events
       await startOutboxPoller();
@@ -37,8 +33,9 @@ async function main(): Promise<void> {
       );
     }
 
+    // Create app
+    const app = createApp();
     server = createServer(app);
-
     server.listen(config.port, () => {
       logger.info(
         `Nexus ${config.serviceName} is running on port ${config.port}`,
@@ -78,11 +75,12 @@ const shutdown = async (signal: string) => {
     }
 
     logger.info("Closing stateful infrastructure channels...");
+
     await Promise.allSettled([
-      redisClient.quit(),
+      stopOutboxPoller(),
+      disconnectRedis(),
       eventBus ? eventBus.disconnect() : Promise.resolve(),
       disconnectPrisma(),
-      stopOutboxPoller(),
     ]);
 
     logger.info(
