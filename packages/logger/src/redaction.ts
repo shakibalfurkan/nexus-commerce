@@ -60,7 +60,17 @@ function redactValue(value: unknown, keys: Record<string, true>): unknown {
   }
 
   if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
+    const out: Record<string | symbol, unknown> = {};
+    // Winston tags every log entry with Symbol(level)/Symbol(message) keys,
+    // and transports gate writes on `info[LEVEL]` (see winston-transport's
+    // TransportStream._write). Object.entries() ignores symbol keys, so they
+    // must be copied over explicitly — dropping them makes the level lookup
+    // undefined, fails the gate comparison, and silently discards EVERY log
+    // line at every transport. Symbols are winston-internal bookkeeping, not
+    // user data, so they pass through unredacted.
+    for (const sym of Object.getOwnPropertySymbols(value)) {
+      out[sym] = (value as Record<symbol, unknown>)[sym];
+    }
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
       const lower = key.toLowerCase();
       out[key] = lower in keys ? REDACTED : redactValue(val, keys);
