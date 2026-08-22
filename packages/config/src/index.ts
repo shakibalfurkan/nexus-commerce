@@ -4,8 +4,28 @@ import { z } from "zod";
 
 // ─── Dotenv Loader ───
 
+/** Flips to true once .env has been parsed so repeat loadEnv() calls are no-ops. */
+let envLoaded = false;
+
+/**
+ * Populate process.env from `<cwd>/.env`.
+ *
+ * Idempotent: services previously called this from both their config module
+ * and lib/prisma, parsing .env (and printing dotenv's banner) twice per boot.
+ * The first caller wins; later calls return immediately.
+ *
+ * `quiet: true` suppresses dotenv ≥17's "injected env (N) from .env" console
+ * banner and its rotating promotional tips.
+ */
 export function loadEnv(): void {
-  dotenv.config({ path: path.join(process.cwd(), ".env") });
+  if (envLoaded) {
+    return;
+  }
+  envLoaded = true;
+  dotenv.config({
+    path: path.join(process.cwd(), ".env"),
+    quiet: true,
+  });
 }
 
 // ─── Env Helpers ───

@@ -1,5 +1,3 @@
-import { loadEnv } from "@nexus/config";
-loadEnv();
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import logger from "../utils/logger.js";
