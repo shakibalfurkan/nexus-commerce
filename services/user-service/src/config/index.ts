@@ -9,8 +9,9 @@ export default {
   port: optionalEnv("PORT", "5001"),
 
   // ─── Redis ───
-  redis_database_url: requireEnv("REDIS_DATABASE_URL"),
-
+  redis: {
+    url: process.env.REDIS_DATABASE_URL,
+  },
   // ─── Kafka ───
   kafka: {
     broker: requireEnv("KAFKA_BROKER"),
@@ -26,12 +27,6 @@ export default {
 
   // ─── Internal Service Auth ───
   internal_service_secret: requireEnv("INTERNAL_SERVICE_SECRET"),
-
-  // ─── PII Encryption (Sprint 2) ───
-  encryption: {
-    master_key: requireEnv("ENCRYPTION_MASTER_KEY"),
-    blind_index_secret: requireEnv("BLIND_INDEX_SECRET"),
-  },
 
   // ─── CORS ───
   allowed_origins:

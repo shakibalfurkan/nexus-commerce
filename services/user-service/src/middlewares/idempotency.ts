@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { redisClient } from "../config/redis.js";
+import { redisClient } from "../lib/redis.js";
 import logger from "../utils/logger.js";
 import sendResponse from "../utils/sendResponse.js";
 

@@ -1,6 +1,6 @@
 import { createKafkaClient, type Kafka, type Producer } from "@nexus/kafka";
 import { createLogger } from "@nexus/logger";
-import config from "./index.js";
+import config from "../config/index.js";
 
 const logger = createLogger({
   serviceName: config.serviceName,
