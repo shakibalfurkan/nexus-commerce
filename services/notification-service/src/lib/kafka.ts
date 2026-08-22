@@ -1,5 +1,5 @@
 import { createKafkaClient, type Kafka, type Producer } from "@nexus/kafka";
-import config from "./index.js";
+import config from "../config/index.js";
 import logger from "../utils/logger.js";
 
 const broker = config.kafka.broker ?? "";
@@ -16,6 +16,7 @@ if (broker && username && password) {
     broker,
     username,
     password,
+    sslRejectUnauthorized: false,
   });
   kafka = client.kafka;
   producer = client.producer;

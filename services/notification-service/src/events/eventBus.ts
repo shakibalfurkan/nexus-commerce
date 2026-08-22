@@ -1,5 +1,5 @@
 import { createEventBus, type EventBus } from "@nexus/kafka";
-import { kafka, producer } from "../config/kafka.js";
+import { kafka, producer } from "../lib/kafka.js";
 import logger from "../utils/logger.js";
 
 /**

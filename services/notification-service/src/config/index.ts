@@ -1,4 +1,4 @@
-import { loadEnv, optionalEnv } from "@nexus/config";
+import { loadEnv, optionalEnv, requireEnv } from "@nexus/config";
 
 loadEnv();
 
@@ -6,12 +6,12 @@ export default {
   node_env: optionalEnv("NODE_ENV", "development"),
   isDevelopment: process.env.NODE_ENV === "development",
   serviceName: optionalEnv("SERVICE_NAME", "notification-service"),
-  port: Number(process.env.PORT) || 5002,
+  port: optionalEnv("PORT", "5002"),
 
   kafka: {
-    broker: process.env.KAFKA_BROKER,
-    username: process.env.KAFKA_USERNAME,
-    password: process.env.KAFKA_PASSWORD,
+    broker: requireEnv("KAFKA_BROKER"),
+    username: requireEnv("KAFKA_USERNAME"),
+    password: requireEnv("KAFKA_PASSWORD"),
   },
 
   redis: {
