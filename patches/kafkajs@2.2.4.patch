@@ -1,0 +1,33 @@
+diff --git a/src/network/requestQueue/index.js b/src/network/requestQueue/index.js
+index eee14d66c3869d90f7bac0ac755ecbad3f2a2741..f0878704201b87d27b678e4b58f1ed0ba3a192fb 100644
+--- a/src/network/requestQueue/index.js
++++ b/src/network/requestQueue/index.js
+@@ -309,10 +309,25 @@ module.exports = class RequestQueue extends EventEmitter {
+     // will be fine, and potentially fix up a new timeout if needed at that time.
+     // Note that if we're merely "overloaded" by having too many inflight requests
+     // we will anyways check the queue when one of them gets fulfilled.
+-    let scheduleAt = this.throttledUntil - Date.now()
++    //
++    // PATCH (nexus-commerce): two upstream defects fixed here.
++    // 1) `throttledUntil` starts at -1, so with an empty pending queue this
++    //    passed `-1 - Date.now()` (≈ -1.7e12) straight into setTimeout — Node
++    //    clamped it to 1ms and emitted TimeoutNegativeWarning on every
++    //    reschedule. Clamp to >= 0.
++    // 2) Even clamped to 0, the unconditional re-arm below would spin a
++    //    setTimeout(0) loop forever while idle. When nothing is throttled and
++    //    nothing is pending there is nothing to wait for, so don't arm a
++    //    timer at all. Correctness is preserved because push() calls this
++    //    itself when it enqueues (line ~167), and fulfillRequest()/request
++    //    timeouts re-trigger checks.
++    let scheduleAt = Math.max(0, this.throttledUntil - Date.now())
+     if (!this.throttleCheckTimeoutId) {
+-      if (this.pending.length > 0) {
+-        scheduleAt = scheduleAt > 0 ? scheduleAt : CHECK_PENDING_REQUESTS_INTERVAL
++      if (scheduleAt === 0 && this.pending.length === 0) {
++        return
++      }
++      if (this.pending.length > 0 && scheduleAt === 0) {
++        scheduleAt = CHECK_PENDING_REQUESTS_INTERVAL
+       }
+       this.throttleCheckTimeoutId = setTimeout(() => {
+         this.throttleCheckTimeoutId = null

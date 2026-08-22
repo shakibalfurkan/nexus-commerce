@@ -16,5 +16,10 @@
   "packageManager": "pnpm@9.0.0",
   "engines": {
     "node": ">=18"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "kafkajs@2.2.4": "patches/kafkajs@2.2.4.patch"
+    }
   }
 }
