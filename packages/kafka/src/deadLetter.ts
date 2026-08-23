@@ -4,8 +4,16 @@ import type { Logger } from "@nexus/logger";
 export interface DeadLetterPublishParams {
   serviceName: string;
   eventId: string;
-  eventType: string;
+  /** `null` when the original event type is unknown (e.g. parse failures). */
+  eventType: string | null;
+  /** Where the failure happened — defaults to `"publish"` (outbox path). */
+  failureStage?: "publish" | "consume";
   errorMessage: string;
+  /** Raw message preserved verbatim for inspection / re-drive (optional). */
+  rawPayload?: string | undefined;
+  /** exactOptionalPropertyTypes-friendly: callers may pass `undefined`. */
+  traceparent?: string | undefined;
+  correlationId?: string | undefined;
   publish: (params: {
     topic: string;
     key: string;
@@ -24,11 +32,18 @@ export async function publishDeadLetterEvent(
     eventType: DLQEventTypes.DEAD_LETTER_EVENT,
     aggregateId: params.eventId,
     payload: {
+      sourceService: params.serviceName,
       originalEventId: params.eventId,
       originalEventType: params.eventType,
+      failureStage: params.failureStage ?? "publish",
       error: params.errorMessage,
+      ...(params.rawPayload !== undefined ? { rawPayload: params.rawPayload } : {}),
       failedAt: now,
     },
+    ...(params.traceparent !== undefined ? { traceparent: params.traceparent } : {}),
+    ...(params.correlationId !== undefined
+      ? { correlationId: params.correlationId }
+      : {}),
   };
 
   try {
