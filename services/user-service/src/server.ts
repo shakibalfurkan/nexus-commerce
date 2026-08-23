@@ -6,6 +6,7 @@ import { eventBus } from "./events/eventBus.js";
 import { disconnectPrisma, prisma } from "./lib/prisma.js";
 import logger from "./utils/logger.js";
 import { startOutboxPoller, stopOutboxPoller } from "./events/outboxPoller.js";
+import { startDeadLetterConsumer } from "./modules/dead-letter-event/startDeadLetterConsumer.js";
 
 let server: Server;
 const port = process.env.PORT || config.port;
@@ -28,6 +29,9 @@ async function main(): Promise<void> {
 
       // Start the outbox poller to process pending events
       await startOutboxPoller();
+
+      // Subscribe the central dead-letter consumer to the DLQ topic
+      await startDeadLetterConsumer();
     } else {
       logger.warn(
         "Kafka credentials not configured — event publishing and outbox poller disabled.",

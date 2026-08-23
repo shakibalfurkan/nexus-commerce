@@ -1,15 +1,20 @@
 import type { NextFunction, Request, Response } from "express";
 import catchAsync from "../utils/catchAsync.js";
-import type { UserRoles } from "../generated/prisma/enums.js";
-import { UnauthorizedError } from "@nexus/errors";
-import type { JwtPayload } from "jsonwebtoken";
+import { UserRoles } from "../generated/prisma/enums.js";
+import { ForbiddenError, UnauthorizedError } from "@nexus/errors";
 import config from "../config/index.js";
 import verifyToken from "../utils/token/verifyToken.js";
 
-export const auth = (
-  ...requiredRoles: (typeof UserRoles)[keyof typeof UserRoles][]
-) => {
-  return catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * JWT auth + role gate. Roles are enforced from the verified access token
+ * itself (auth-service is the authority that signs them); no per-request user
+ * lookup — user-service data can't be used to authenticate a call to
+ * user-service anyway.
+ *
+ * Usage: `auth(UserRoles.ADMIN, UserRoles.SUPER_ADMIN)`
+ */
+export const auth = (...requiredRoles: UserRoles[]) => {
+  return catchAsync(async (req: Request, _res: Response, next: NextFunction) => {
     const token =
       req.cookies.accessToken || req.headers.authorization?.split(" ")[1];
 
@@ -17,27 +22,19 @@ export const auth = (
       throw new UnauthorizedError("You are not authorized!");
     }
 
-    const decodedToken = verifyToken(
-      token,
-      config.jwt.access_token_secret!,
-    ) as JwtPayload;
+    const decoded = verifyToken(token, config.jwt.access_token_secret!, "access");
 
-    const { id, email, role } = decodedToken;
-
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      throw new UnauthorizedError("You are not authorized!");
-    }
-
-    if (!requiredRoles.includes(role)) {
-      return AuthError(req, res);
+    if (
+      requiredRoles.length > 0 &&
+      !decoded.role.some((role) => requiredRoles.includes(role))
+    ) {
+      throw new ForbiddenError("You do not have permission to perform this action");
     }
 
     req.user = {
-      id: user._id.toString(),
-      email: user.email,
-      role,
+      id: decoded.id,
+      email: decoded.email,
+      role: decoded.role,
     };
 
     next();
