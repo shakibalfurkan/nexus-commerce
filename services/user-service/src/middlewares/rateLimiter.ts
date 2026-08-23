@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { redisClient } from "../lib/redis.js";
+import { redis as redisClient } from "../lib/redis.js";
 import { AppError } from "@nexus/errors";
 import logger from "../utils/logger.js";
 

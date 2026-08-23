@@ -3,7 +3,7 @@ import type { UserRoles } from "../generated/prisma/enums.ts";
 type TUser = {
   id: string;
   email: string;
-  role: UserRoles;
+  role: UserRoles[];
 };
 
 declare global {

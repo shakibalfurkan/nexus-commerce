@@ -79,6 +79,8 @@ export async function createUserProfile(
 
     await UserRepository.writeAuditLog({
       actorId,
+      actorEmail: "system@nexus.internal",
+      actorDisplayName: "user-service",
       action: "USER_CREATED",
       targetId: payload.id,
       targetType: "User",
@@ -139,6 +141,8 @@ export async function deleteUser(id: string, actorId: string): Promise<void> {
 
     await UserRepository.writeAuditLog({
       actorId,
+      actorEmail: "system@nexus.internal",
+      actorDisplayName: "user-service",
       action: "USER_DELETED",
       targetId: id,
       targetType: "User",
@@ -163,6 +167,8 @@ export async function hardDeleteUser(
 
     await UserRepository.writeAuditLog({
       actorId,
+      actorEmail: "system@nexus.internal",
+      actorDisplayName: "user-service",
       action: "USER_HARD_DELETED",
       targetId: id,
       targetType: "User",
@@ -181,6 +187,8 @@ export async function restoreUser(
 
   await UserRepository.writeAuditLog({
     actorId,
+    actorEmail: "system@nexus.internal",
+    actorDisplayName: "user-service",
     action: "USER_RESTORED",
     targetId: id,
     targetType: "User",

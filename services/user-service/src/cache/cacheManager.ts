@@ -1,4 +1,4 @@
-import { redisClient } from "../lib/redis.js";
+import { redis as redisClient } from "../lib/redis.js";
 import { CircuitBreaker } from "./circuitBreaker.js";
 import { TTL, negativeCacheKey } from "./cacheKeys.js";
 import logger from "../utils/logger.js";

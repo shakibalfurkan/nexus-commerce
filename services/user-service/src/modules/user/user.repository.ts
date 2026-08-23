@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto";
+
 import { prisma } from "../../lib/prisma.js";
 import type {
   PrismaTransaction,
@@ -16,6 +18,7 @@ import {
   paginateResult,
 } from "../../pagination/cursorPagination.js";
 import { UserRoles } from "../../generated/prisma/enums.js";
+import type { Prisma } from "../../generated/prisma/client.js";
 
 // ─── Internal Query Helpers ───
 
@@ -25,11 +28,7 @@ const userProfileIncludes = {
       shippingAddresses: true,
     },
   },
-  sellerProfile: {
-    include: {
-      shopAddresses: true,
-    },
-  },
+  sellerProfile: true,
   adminProfile: true,
 } as const;
 
@@ -187,11 +186,16 @@ export async function createCustomerProfile(
 ) {
   const client = tx ?? prisma;
 
+  // Schema requires a globally-unique referralCode; none arrives on the wire,
+  // so mint one here.
+  const referralCode = `${firstName}-${lastName}-${randomUUID().slice(0, 8)}`;
+
   return client.customerProfile.create({
     data: {
       userId,
       firstName,
       lastName,
+      referralCode,
       phone: phone ?? null,
       avatar: avatar ?? null,
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
@@ -213,21 +217,6 @@ export async function createSellerProfile(
       userId,
       firstName,
       lastName,
-      shopName: shopData.shopName,
-      shopEmail: shopData.shopEmail,
-      shopPhone: shopData.shopPhone,
-      shopAddresses: {
-        create: {
-          street: shopData.shopAddress.street,
-          city: shopData.shopAddress.city,
-          state: shopData.shopAddress.state,
-          postalCode: shopData.shopAddress.postalCode,
-          country: shopData.shopAddress.country,
-          lat: shopData.shopAddress.coordinates?.lat ?? null,
-          lng: shopData.shopAddress.coordinates?.lng ?? null,
-          isPrimary: true,
-        },
-      },
     },
   });
 }
@@ -309,6 +298,8 @@ export async function listUsers(
 // ─── Audit Repository ───
 export async function writeAuditLog(params: {
   actorId: string;
+  actorEmail: string;
+  actorDisplayName: string;
   action: string;
   targetId: string;
   targetType: string;
@@ -321,18 +312,30 @@ export async function writeAuditLog(params: {
   await prisma.auditLog.create({
     data: {
       actorId: params.actorId,
+      actorEmail: params.actorEmail,
+      actorDisplayName: params.actorDisplayName,
       action: params.action,
       targetId: params.targetId,
       targetType: params.targetType,
-      oldValues: (params.oldValues ?? undefined) as any,
-      newValues: (params.newValues ?? undefined) as any,
-      diff:
-        params.oldValues && params.newValues
-          ? (computeDiff(params.oldValues, params.newValues) as any)
-          : undefined,
+      ...(params.oldValues !== undefined
+        ? { oldValues: params.oldValues as Prisma.InputJsonValue }
+        : {}),
+      ...(params.newValues !== undefined
+        ? { newValues: params.newValues as Prisma.InputJsonValue }
+        : {}),
+      ...(params.oldValues && params.newValues
+        ? {
+            diff: computeDiff(
+              params.oldValues,
+              params.newValues,
+            ) as Prisma.InputJsonValue,
+          }
+        : {}),
       ipAddress: params.ipAddress ?? null,
       userAgent: params.userAgent ?? null,
-      metadata: (params.metadata ?? undefined) as any,
+      ...(params.metadata !== undefined
+        ? { metadata: params.metadata as Prisma.InputJsonValue }
+        : {}),
     },
   });
 }
@@ -342,7 +345,6 @@ function computeDiff(
   newValues: Record<string, unknown>,
 ): Record<string, { from: unknown; to: unknown }> {
   const diff: Record<string, { from: unknown; to: unknown }> = {};
-
   for (const key of Object.keys(newValues)) {
     if (key in oldValues && oldValues[key] !== newValues[key]) {
       diff[key] = { from: oldValues[key], to: newValues[key] };

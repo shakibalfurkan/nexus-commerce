@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { redisClient } from "../lib/redis.js";
+import { redis as redisClient } from "../lib/redis.js";
 import logger from "../utils/logger.js";
 import sendResponse from "../utils/sendResponse.js";
 
@@ -98,7 +98,7 @@ export async function idempotencyMiddleware(
 
       redisClient
         .setex(redisKey, IDEMPOTENCY_TTL, JSON.stringify(responseData))
-        .catch((err) => {
+        .catch((err: unknown) => {
           logger.error("[Idempotency] Failed to cache response", err);
         });
 

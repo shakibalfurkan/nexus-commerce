@@ -23,7 +23,7 @@ declare namespace Express {
      */
     user?: {
       id: string;
-      role: import("../generated/prisma/enums.js").UserRoles;
+      role: import("../generated/prisma/enums.js").UserRoles[];
       email: string;
     };
   }
