@@ -43,33 +43,6 @@ model NotificationLog {
   @@map("notification_logs")
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DeadLetterEntry — Persistent DLQ for events that exhausted all retries
-//
-// After `maxRetries` failed attempts, the event is persisted here AND published
-// to the Kafka `dead-letter-queue` topic. The table survives broker retention
-// expiry and supports manual re-drive via an admin tool.
-// ─────────────────────────────────────────────────────────────────────────────
-
-model DeadLetterEntry {
-  id            String   @id @default(uuid())
-  eventId       String
-  eventType     String
-  recipient     String
-  payload       Json
-  failureReason String
-  attemptCount  Int
-  traceparent   String?
-  correlationId String?
-  enqueuedAt    DateTime @default(now())
-  createdAt     DateTime @default(now())
-
-  @@index([eventType])
-  @@index([enqueuedAt])
-  @@index([recipient])
-  @@map("dead_letter_queue")
-}
-
 enum NotificationStatus {
   PENDING
   SENT

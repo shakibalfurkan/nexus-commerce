@@ -1,7 +1,6 @@
 import { prisma } from "../lib/prisma.js";
-import { Prisma } from "../generated/prisma/client.js";
 import { eventBus } from "../events/eventBus.js";
-import { KafkaTopics } from "@nexus/event-contracts";
+import { publishDeadLetterEvent } from "@nexus/kafka";
 import logger from "../utils/logger.js";
 
 export interface RouteToDlqInput {
@@ -26,48 +25,25 @@ export async function routeToDlq(input: RouteToDlqInput): Promise<void> {
     },
   });
 
-  // 2. Persist in DeadLetterEntry table
-  await prisma.deadLetterEntry.create({
-    data: {
+
+  // 2. Publish to the shared DLQ topic via @nexus/kafka's helper so the
+  // message matches DeadLetterEventSchema and is consumable by the central
+  // admin table in user-service. Best-effort: the NotificationLog row (status
+  // DLQ + lastError) remains the per-service source of truth.
+  if (eventBus) {
+    const bus = eventBus;
+    await publishDeadLetterEvent({
+      serviceName: "notification-service",
       eventId: input.eventId,
       eventType: input.eventType,
-      recipient: input.recipient,
-      payload: input.payload as Prisma.InputJsonValue,
-      failureReason: input.failureReason,
-      attemptCount: input.attemptCount,
-      ...(input.traceparent !== undefined
-        ? { traceparent: input.traceparent }
-        : {}),
-      ...(input.correlationId !== undefined
-        ? { correlationId: input.correlationId }
-        : {}),
-    },
-  });
-
-  // 3. Publish to Kafka DLQ topic (if the EventBus is available).
-  // NOTE: `value` is the plain object — EventBus.publish serializes it, so
-  // passing a pre-stringified payload here would double-encode the message.
-  if (eventBus) {
-    try {
-      await eventBus.publish({
-        topic: KafkaTopics.DLQ,
-        key: input.eventId,
-        value: {
-          eventId: input.eventId,
-          eventType: input.eventType,
-          failureReason: input.failureReason,
-          attemptCount: input.attemptCount,
-          recipient: input.recipient,
-        },
-      });
-    } catch (error) {
-      // Don't fail the DLQ routing if Kafka publish fails — the DB entry
-      // is the source of truth and supports manual re-drive.
-      logger.error("Failed to publish DLQ event to Kafka", {
-        eventId: input.eventId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+      failureStage: "consume",
+      errorMessage: input.failureReason,
+      rawPayload: JSON.stringify(input.payload),
+      traceparent: input.traceparent,
+      correlationId: input.correlationId,
+      publish: (p) => bus.publish(p),
+      logger,
+    });
   }
 
   logger.error("Notification routed to DLQ", {
@@ -95,68 +71,34 @@ export interface RoutePoisonMessageInput {
  * Route a poison message — a Kafka payload that fails JSON.parse or schema
  * validation before a NotificationLog row can be claimed. Permanently
  * malformed, so re-throwing would cause KafkaJS infinite redelivery
- * (`.clinerules` §6). Persist to DeadLetterEntry + publish to DLQ topic,
- * then ACK.
+ * (.clinerules §6). Publish to the shared DLQ topic, then ACK.
  */
 export async function routePoisonMessage(
   input: RoutePoisonMessageInput,
 ): Promise<void> {
-  // Idempotency guard for at-least-once redelivery (e.g. crash after publish).
-  const existing = await prisma.deadLetterEntry.findFirst({
-    where: { eventId: input.dedupeKey },
-    select: { id: true },
-  });
-  if (existing) {
-    logger.warn("Poison message already routed to DLQ — skipping", {
-      eventId: input.dedupeKey,
-    });
-    return;
-  }
-
-  await prisma.deadLetterEntry.create({
-    data: {
-      eventId: input.dedupeKey,
-      eventType: "kafka.parse_error",
-      // Recipient is not derivable from a malformed message. The raw payload
-      // is preserved verbatim for manual inspection / re-drive.
-      recipient: "unknown",
-      payload: input.rawPayload,
-      failureReason: input.failureReason,
-      attemptCount: 1,
-      ...(input.traceparent !== undefined
-        ? { traceparent: input.traceparent }
-        : {}),
-      ...(input.correlationId !== undefined
-        ? { correlationId: input.correlationId }
-        : {}),
-    },
-  });
-
-  // `value` is a plain object — EventBus.publish serializes it (no manual
-  // JSON.stringify, which would double-encode).
-  if (eventBus) {
-    try {
-      await eventBus.publish({
-        topic: KafkaTopics.DLQ,
-        key: input.dedupeKey,
-        value: {
-          eventId: input.dedupeKey,
-          failureReason: input.failureReason,
-          rawPayload: input.rawPayload,
+  await publishDeadLetterEvent({
+    serviceName: "notification-service",
+    eventId: input.dedupeKey,
+    eventType: null, // payload failed parse/schema — type not trustworthy
+    failureStage: "consume",
+    errorMessage: input.failureReason,
+    rawPayload: input.rawPayload,
+    traceparent: input.traceparent,
+    correlationId: input.correlationId,
+    publish: eventBus
+      ? (p) => {
+          // Narrowed once — TS can't keep the `eventBus` narrowing inside
+          // the closure.
+          const bus = eventBus;
+          return bus ? bus.publish(p) : Promise.resolve();
+        }
+      : async () => {
+          logger.warn("Kafka unconfigured — poison message logged only", {
+            eventId: input.dedupeKey,
+          });
         },
-        ...(input.traceparent !== undefined
-          ? { traceparent: input.traceparent }
-          : {}),
-      });
-    } catch (error) {
-      // DB entry is the source of truth — Kafka publish failure must not
-      // fail the ACK path (the message is already safe from infinite retry).
-      logger.error("Failed to publish poison message to Kafka DLQ", {
-        eventId: input.dedupeKey,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+    logger,
+  });
 
   logger.error("Poison message routed to DLQ", {
     eventId: input.dedupeKey,
