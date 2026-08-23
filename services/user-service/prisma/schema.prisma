@@ -257,6 +257,30 @@ model IdempotencyRecord {
   @@map("idempotency_records")
 }
 
+model DeadLetterEvent {
+  id            String  @id @default(uuid())
+  /// Service that produced the dead-letter event (e.g. "notification-service").
+  sourceService String
+  /// Original event id — for poison messages this is the stable
+  /// `topic:partition:offset` dedup key. Unique per source so at-least-once
+  /// redelivery of the DLQ topic stays idempotent.
+  eventId       String
+  eventType     String?
+  /// Where the failure happened: outbox publish vs consumer processing.
+  failureStage  String
+  errorMessage  String
+  /// Raw message snapshot preserved for manual inspection / re-drive.
+  payload       Json?
+  traceparent   String?
+  correlationId String?
+  createdAt     DateTime @default(now())
+
+  @@unique([sourceService, eventId])
+  @@index([sourceService, createdAt])
+  @@index([eventType])
+  @@map("dead_letter_events")
+}
+
 // ─── Enums ───
 
 enum UserRoles {
