@@ -33,7 +33,6 @@ model Credential {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  refreshTokens  RefreshToken[]
   passwordResets PasswordReset[]
 
   @@index([email])
@@ -41,23 +40,6 @@ model Credential {
   @@index([deletedAt])
   @@index([reactivateWithin])
   @@map("credentials")
-}
-
-model RefreshToken {
-  id           String   @id @default(uuid())
-  token        String   @unique
-  credentialId String
-  familyId     String   @default(uuid())
-  expiresAt    DateTime
-  isRevoked    Boolean  @default(false)
-  createdAt    DateTime @default(now())
-
-  credential Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
-
-  @@index([token])
-  @@index([credentialId])
-  @@index([credentialId, familyId])
-  @@map("refresh_tokens")
 }
 
 model PasswordReset {

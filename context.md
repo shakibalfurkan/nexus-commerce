@@ -81,3 +81,18 @@ Call-site cleanup in the same change:
 - `tsc` build verified passing
 
 Note: old behavior of `logout` on a garbage token was a Prisma P2025 throw; now it is a silent no-op (nothing to delete) — strictly better for a logout endpoint.
+
+### STEP 5 — Postgres artifacts removed (completed 2026-09-06)
+
+- Removed `RefreshToken` model (`@@map("refresh_tokens")`) from `prisma/schema.prisma`
+- Removed the `Credential.refreshTokens` relation (it only existed for this table; `passwordResets` relation kept)
+- Migration `20260906020804_remove_refresh_token_model` generated and **applied** to the Aiven Postgres `auth_db` (explicit user approval given; rollback plan: `git revert` + re-apply the original `20260119132125_refresh_token` DDL — the table held only revocable session state now owned by Redis)
+- Verified: `pg_tables` now lists `_prisma_migrations, audit_logs, credentials, idempotency_records, outbox_events, password_resets` — `refresh_tokens` gone
+- `prisma generate` re-run; generated client contains zero `RefreshToken` references; `tsc` build passing
+
+### STEP 6 — Verification (completed 2026-09-06)
+
+- `pnpm build` (tsc, strict) passes after every change
+- No test suite exists in auth-service (`test` script is a placeholder), so verification was: type-check build, live DB inspection (table dropped), and code-path review of login → refresh → rotation → reuse → logout against the new repo
+- Flow trace confirmed: login/verifyRegistration issue with new familyId (embedded in JWT + Redis key); refresh verifies JWT → hash compare → Lua rotation under SAME familyId (familyId persists across rotations since it is carried in the token payload and passed back into `rotateRefreshToken`); presenting the old rotated token → hash mismatch → family key deleted + `[RTR] Token reuse detected` warning; expired token (past TTL) → `findActiveTokenHash` returns null → clean 401; logout → `revokeRefreshToken` decodes + DELETEs family key
+- Runtime E2E against live Redis/Kafka was not executed (no local Kafka broker/env guarantee); flagging as residual manual verification
