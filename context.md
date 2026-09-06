@@ -93,6 +93,20 @@ Note: old behavior of `logout` on a garbage token was a Prisma P2025 throw; now 
 ### STEP 6 — Verification (completed 2026-09-06)
 
 - `pnpm build` (tsc, strict) passes after every change
-- No test suite exists in auth-service (`test` script is a placeholder), so verification was: type-check build, live DB inspection (table dropped), and code-path review of login → refresh → rotation → reuse → logout against the new repo
-- Flow trace confirmed: login/verifyRegistration issue with new familyId (embedded in JWT + Redis key); refresh verifies JWT → hash compare → Lua rotation under SAME familyId (familyId persists across rotations since it is carried in the token payload and passed back into `rotateRefreshToken`); presenting the old rotated token → hash mismatch → family key deleted + `[RTR] Token reuse detected` warning; expired token (past TTL) → `findActiveTokenHash` returns null → clean 401; logout → `revokeRefreshToken` decodes + DELETEs family key
-- Runtime E2E against live Redis/Kafka was not executed (no local Kafka broker/env guarantee); flagging as residual manual verification
+- No test suite exists in auth-service (`test` script is a placeholder), so a runtime E2E script (tsx, not committed) was run against the **live Upstash Redis** exercising the actual repo functions — **all 14 checks passed**:
+  - issue → key `auth:refresh:<credentialId>:<familyId>` with TTL exactly 604800s, value hashed JSON (no plaintext JWT in Redis), `tokenHash === sha256(token)`
+  - JWT decodes `credentialId` + `familyId`; rotation under SAME familyId persists across rotations; rotated token differs but carries same familyId
+  - presenting the OLD rotated token → hash mismatch → family key deleted (reuse detection)
+  - concurrent rotations leave consistent state — NOTE: same-second rotations produce byte-identical JWTs (`iat` is second-resolution) so the CAS may accept both writes of the *identical* value (benign, state stays consistent); with distinct values exactly one CAS wins (verified deterministically)
+  - expired/unknown family → `findActiveTokenHash` null → clean reject; logout → `revokeRefreshToken` deletes the family key
+- DB verified: `refresh_tokens` table dropped from Aiven Postgres; generated Prisma client has zero RefreshToken references
+- Residual: full HTTP E2E through Express/Kafka startup not exercised (no local broker); flow logic itself verified end-to-end at the service/repository layer
+
+### STEP 7 — Commits (completed 2026-09-06)
+
+Pre-existing uncommitted WIP from earlier sessions was committed first in service-scoped chunks (chore(auth) deps, refactor(gateway) redis lib, refactor(auth) redis lib, fix(notification) template, docs) to keep history clean, then this task in logical chunks:
+1. `docs(auth): add refresh-token Postgres-to-Redis migration audit report`
+2. `feat(auth): add Redis-backed refresh token repository with hashed storage`
+3. `feat(auth): rewrite refreshToken flow with hashed comparison and atomic Lua rotation`
+4. `refactor(auth): remove RefreshToken Postgres model, drop refresh_tokens table`
+5. `docs(auth): record refresh-token migration verification results` (final)
