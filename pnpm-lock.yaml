@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   kafkajs@2.2.4:
-    hash: kgrocoduh7wu7ytdqbucp6hhmy
+    hash: 1e02c961544a6179f0aa8a77d0fb03b137357639d526002cdd8fc9382e1c0554
     path: patches/kafkajs@2.2.4.patch
 
 importers:
@@ -393,9 +393,6 @@ importers:
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
-      cors:
-        specifier: ^2.8.6
-        version: 2.8.6
       express:
         specifier: ^5.2.1
         version: 5.2.1
@@ -424,9 +421,6 @@ importers:
       '@types/cookie-parser':
         specifier: ^1.4.10
         version: 1.4.10(@types/express@5.0.6)
-      '@types/cors':
-        specifier: ^2.8.19
-        version: 2.8.19
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6
