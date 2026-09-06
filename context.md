@@ -1,124 +1,43 @@
-# Nexus — Logger Production-Hardening (TODO.md task) — Working Context
+# Context
 
-Last updated: 2026-08-20
-Status: STEP 1–3 COMPLETE & VERIFIED. STEP 4 (commits) PENDING — awaiting
-commit scope decision (see Pending below).
+## auth-service — Refresh token storage migration: Postgres → Redis (hashed)
 
-## Goal
-Per TODO.md: harden `@nexus/logger` (Winston, staying on Winston) for production
-correctness on ephemeral-filesystem hosting, restructure single `index.ts` into
-per-concern files, add structural (format-level) redaction, gate file transports
-OFF by default via `ENABLE_FILE_LOGGING`, and add a request-context child-logger
-helper. No service-facing API changes intended (`createLogger`/`createMorganStream`
-signatures preserved).
+### STEP 1 — Audit findings (completed 2026-09-06)
 
-## Step 1 — Audit Findings
+**Every place the `RefreshToken` Prisma model is read / written / queried:**
 
-### A. Deployment targets (persistent disk?)
-- No `render.yaml`, `Dockerfile`, `docker-compose`, `.github/workflows`, or any
-  infra/CI config exists in the repo. Deployment target is NOT pinned by code.
-- AGENTS.md states: "Free-tier only, no card on file: Neon/Aiven Postgres,
-  Aiven Kafka (5-topic cap), Upstash Redis (shared), Resend, Render."
-  → All backend services target **Render free-tier containers**, which have an
-  **EPHEMERAL filesystem** (all 4 services: api-gateway, auth-service,
-  user-service, notification-service).
-- Conclusion: NONE of the services have persistent disk. DailyRotateFile writes
-  to `process.cwd()/logs/...` are lost on every redeploy/restart. Current code
-  only skips file transports on Vercel/Lambda (`isServerless`), so on Render the
-  file transports are ACTIVE but pointless (writes vanish) AND cost disk I/O /
-  open file handles for nothing.
-- Decision (user-confirmed 2026-08-20 "gate OFF via env var, keep code"):
-  DEFAULT OFF via `ENABLE_FILE_LOGGING` (explicit opt-in), matching STEP 2 /
-  REQUIREMENTS. Keeps a local-dev escape hatch; no code removed.
+| Location | What it does |
+|---|---|
+| `services/auth-service/src/utils/token/issueToken.ts` → `issueRefreshToken(payload, credentialId, familyId?)` | Signs refresh JWT, **INSERTs plaintext token** row (`token`, `credentialId`, `familyId` = `familyId ?? crypto.randomUUID()`, `expiresAt = now + 7d` via local `REFRESH_TOKEN_EXPIRY_MS` constant). Called from `login()` and `verifyRegistration()` (both pass no `familyId` → new family per login) and from `refreshToken()` (passes existing `familyId` → rotation). |
+| `services/auth-service/src/modules/auth/auth.service.ts` → `refreshToken(token)` (line ~464) | **Plaintext lookup** `prisma.refreshToken.findUnique({ where: { token }, include: { credential: true } })` ← **the security gap**. Then: `!storedToken` → 401; `isRevoked` → `revokeTokenFamily(familyId)` + `logger.warn("[RTR] Token reuse detected — revoked family …")` + 401; `expiresAt < now` → `revokeRefreshToken(token)` + 401; then `verifyToken(token, refresh_token_secret, "refresh")`; takes `activeRole` from decoded JWT; revokes old token; issues new access+refresh pair under **same** `familyId`. Returns `{ accessToken, refreshToken, role: credential.role }`. |
+| `services/auth-service/src/modules/auth/auth.service.ts` → `logout(token)` | Calls `revokeRefreshToken(token)` (plaintext `updateMany` → `isRevoked: true`). |
+| `services/auth-service/src/utils/token/revokeToken.ts` | `revokeTokenFamily(familyId)` and `revokeRefreshToken(token)` — both Prisma `updateMany`/`update` marking `isRevoked`. Only consumer is `auth.service.ts`. |
+| `services/auth-service/src/modules/auth/auth.repository.ts` → `findRefreshToken`, `revokeRefreshToken`, `revokeTokenFamily` | **Dead code** — `AuthRepository.*` is only ever used for `findByEmail`/`findById`. The refresh-token functions here have zero call sites (service uses `utils/token/revokeToken.ts` instead). |
+| `prisma/schema.prisma` | `RefreshToken` model (`@@map("refresh_tokens")`: id, token plaintext unique, credentialId, familyId default uuid, expiresAt, isRevoked, createdAt) + `Credential.refreshTokens` relation (only exists for this table). |
 
-### B. Sensitive fields currently logged?
-Surveyed every `logger.{info,warn,error,debug,http}(...)` call with a meta object
-across `services/` (auth, user, notification, api-gateway). No call site logs a
-raw password, token string, or authorization header value. Specifics:
-- `auth.service.ts:237` logs `{ requestId, error }` on registration failure;
-  `userData` is spread into the *internal signature request body* but NOT into
-  the log (password was already destructured out at :200). Safe.
-- `globalErrorHandler.ts` (all 4 services) logs `logMetadata` =
-  `{statusCode, errorType, isOperational, method, path, ip, requestId}` + `error`
-  + `stack`. `error`/`stack` are Error objects (no secrets). `ip` is PII-bearing
-  but low-risk and standard; redaction covers it only if key-named.
-- `prisma.ts` slow-query logs emit `{ query, params, duration, target }`. Prisma
-  `params` are positional `$1,$2,...` (values NOT interpolated), so they do not
-  leak password plaintext. Acceptable.
-- `resend-email.provider.ts:125` logs `{ messageId, to, subject }` — `to` is
-  recipient email (PII). Structural redaction key-match will NOT hit `to`, so it
-  stays logged (acceptable: standard; flag only).
+- **No session-listing feature exists** — no other reads of `refreshTokens`.
+- Tests: `package.json` has no test script (`"test": "echo Error: no test specified"`). Verification will be `tsc` build + manual flow checks.
 
-### C. Redaction key set required (case-insensitive, recursive walk)
-password, pass, pwd, token, apiKey, api_key, secret, authorization, auth, otp,
-code, cardNumber, card_number, cardnumber, creditCard, credit_card, cvv,
-pin, resetToken, reset_token, refreshToken, refresh_token, accessToken,
-access_token, bearer, cookie, set-cookie, sessionId, session, privateKey,
-private_key, ssn. Mask value → "[REDACTED]". Also mask nested objects/arrays
-recursively. Apply as a Winston format BEFORE transports (runs for every
-transport, not opt-in per call site).
+**Exact refresh JWT payload shape (confirmed from code):**
 
-### D. Service dependency on file logs?
-- Grep for `logs/`, `readdir`, `readFile`, `fs.readFile` reading `.log` in
-  `services/` → ZERO matches. No monitoring script reads log files off disk.
-- Safe to default file transports OFF. No service will silently break.
+Signed by `generateToken()` (`HS256`) with `config.jwt.refresh_token_secret`, `expiresIn: config.jwt.refresh_token_expires_in` (default `"7d"`):
 
-## Step 2–3 Status (implemented + verified)
+```json
+{ "id": "<credentialId>", "email": "...", "role": ["CUSTOMER", ...], "activeRole": "CUSTOMER", "tokenType": "refresh", "iat": ..., "exp": ... }
+```
 
-Files created/modified under `packages/logger/src/`:
-- `types.ts` — LoggerConfig, Logger (added `child` method for context helper),
-  MorganStream. No `any`; explicit Winston types.
-- `format.ts` — `consoleFormat` (colorized dev) + `fileFormat` (JSON prod),
-  unchanged logic from original index.ts.
-- `redaction.ts` — `DEFAULT_REDACT_KEYS` (31 keys, case-insensitive) +
-  recursive `redactValue` + `redactionFormat(extraKeys?)` Winston format. Uses
-  `Record<string,true>` lookup (project rule: static string-keyed → Record, not
-  Set); no trivial one-line wrappers.
-- `transports.ts` — `buildTransports(config)`: Console ALWAYS present; the 3
-  DailyRotateFile transports ONLY when `ENABLE_FILE_LOGGING=true` (default OFF),
-  with comment explaining ephemeral Render hosting. Removed old `isServerless`
-  gate.
-- `context.ts` — `withRequestContext(logger, {requestId?, correlationId?,
-  traceId?})` → `logger.child(...)`. (The `bindRequestContext` alias was dropped
-  as a trivial rename — project rule.)
-- `logger.ts` — `createLogger` + `createMorganStream` (signatures unchanged).
-  Wires `redactionFormat()` into the pipeline BEFORE `fileFormat`, applied to
-  every transport. Keeps defaultMeta + unhandledRejection/uncaughtException.
-- `index.ts` — barrel re-exporting all submodules; old single-file logic removed.
+- `credentialId` **IS recoverable by decoding** — it is the `id` claim.
+- `familyId` is **NOT in the payload** — it lives only in the DB row. The TODO's assumption ("payload must already carry enough to reconstruct credentialId/familyId") is **half true**: `familyId` must be added as a JWT claim at issue time so rotation can decode `credentialId + familyId` without any store lookup. `familyId` is a random UUID, not secret — safe to embed in a signed JWT.
+- `activeRole` is read from the old token during refresh (`decodedToken.activeRole`) and re-embedded into the new pair — rotation currently keeps the role from the presented token.
 
-Verification:
-- `packages/logger` `check-types` (tsc --noEmit) → clean.
-- `api-gateway`, `auth-service`, `notification-service` `build` (tsc) → clean
-  against the new barrel (createLogger/createMorganStream imports intact).
-- `user-service` `build` → FAILS with 48 PRE-EXISTING errors confined to Prisma
-  repositories (user.repository.ts, auditLog.repository.ts,
-  sellerProfile.repository.ts, shopAddress.repository.ts, user.dto.ts) — schema /
-  generated-client drift, NONE in logger-consuming files. Confirmed
-  `user.repository.ts` does NOT import `@nexus/logger`. Logger restructure is NOT
-  the cause. Flagged, not fixed (out of scope; not introduced by this task).
-- No service reads `logs/` off disk → gating file transports OFF breaks nothing.
+**Migration-relevant notes:**
+- Redis client: shared `@nexus/redis` (ioredis wrapper) instantiated in `src/lib/redis.ts` as `redis`. Existing auth Redis usage follows `<service>:<purpose>:<id>` + TTL convention (`auth:otp:…`, `auth:reg:…`), so `auth:refresh:<credentialId>:<familyId>` fits.
+- Current flow has no concurrency control (find → update → create non-atomic); TODO Step 4 requires Lua/MULTI for compare-then-overwrite during rotation.
+- Deploy note: switching storage invalidates all existing refresh tokens (they live only in Postgres); users will be logged out unless a backfill is done. Accepted as part of this migration.
+- Step 5 involves `DROP TABLE refresh_tokens` — destructive op, requires explicit approval + rollback plan per AGENTS.md.
 
-Step 4 (service call-site fixes): NONE required — audit found no call site logs
-raw secrets/PII. Redaction is structural defense-in-depth.
-
-## Pending / Uncommitted
-- All changes are uncommitted working-tree edits. TODO.md Step 4 asks 4 logical
-  commits: (1) audit report (context.md), (2) restructure+redaction+gating,
-  (3) child-context helper, (4) service call-site fixes (N/A — no fixes needed).
-- IMPORTANT: the working tree ALSO contains unrelated prior modifications
-  (AGENTS.md, event-contracts/topics.ts, a notification-service refactor,
-  pnpm-lock drift). Commits MUST be scoped to logger work only to avoid bundling
-  unrelated changes. The logger-work file set to stage:
-  - packages/logger/src/index.ts (modified)
-  - packages/logger/src/{types,format,redaction,transports,context,logger}.ts (new)
-  - Optionally context.md (audit report) as its own commit.
-- No commits made yet. Awaiting user go-ahead / scope on committing.
-
-## Resume Instructions
-- If resuming after a break: logger refactor is done & typechecks; only Step 4
-  commits remain. Re-read `packages/logger/src/*` and this file; no re-audit
-  needed unless deployment assumptions change.
-- Build check command: `pnpm -C packages/logger check-types` and
-  `pnpm -C services/<svc> build` (note user-service has pre-existing Prisma
-  type errors unrelated to this work).
-- No destructive ops performed.
+**Decisions made:**
+- Add `familyId` claim to the refresh JWT payload at issue time (required for key design `auth:refresh:<credentialId>:<familyId>`).
+- New repo: `src/repositories/refreshToken.ts` (matches existing `repositories/credential.ts` pattern; uses `lib/redis.js` instance like other modules — consistent with current codebase style).
+- `issueToken.ts` keeps only `issueAccessToken`; `utils/token/revokeToken.ts` is deleted (its logic moves into the new repo); dead Prisma refresh functions removed from `modules/auth/auth.repository.ts`.
+- TTL semantics: refresh expiry is 7d from issue (sliding on rotation), matching current `expiresAt = now + 7d` per issuance.
