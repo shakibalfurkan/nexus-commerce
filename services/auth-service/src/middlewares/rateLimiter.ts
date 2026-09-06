@@ -1,7 +1,8 @@
 import type { Request, Response, NextFunction } from "express";
-import { redisClient } from "../config/redis.js";
+
 import { AppError } from "@nexus/errors";
 import logger from "../utils/logger.js";
+import { redis } from "../lib/redis.js";
 
 interface RateLimiterOptions {
   windowSeconds?: number;
@@ -26,7 +27,7 @@ export function rateLimiter(opts: RateLimiterOptions) {
 
     try {
       // Try Redis first
-      const current = await redisClient.get(key);
+      const current = await redis.get(key);
       const count = current ? Number(current) : 0;
 
       if (count >= maxRequests) {
@@ -34,9 +35,9 @@ export function rateLimiter(opts: RateLimiterOptions) {
       }
 
       if (count === 0) {
-        await redisClient.setex(key, windowSeconds, "1");
+        await redis.setex(key, windowSeconds, "1");
       } else {
-        await redisClient.incr(key);
+        await redis.incr(key);
       }
 
       next();

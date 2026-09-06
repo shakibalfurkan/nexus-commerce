@@ -4,7 +4,6 @@ import express, {
   type Response,
 } from "express";
 
-import cors from "cors";
 import cookieParser from "cookie-parser";
 
 import config from "./config/index.js";
@@ -56,12 +55,7 @@ export function createApp(): Application {
   );
 
   app.use(requestIdMiddleware);
-  app.use(
-    cors({
-      origin: config.allowed_origins,
-      credentials: true,
-    }),
-  );
+
   app.use(express.json({ limit: "10mb" }));
   app.use(sanitizationMiddleware);
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));

@@ -1,6 +1,6 @@
 import { createEventBus, type EventBus } from "@nexus/kafka";
-import { kafka, producer } from "../config/kafka.js";
 import logger from "../utils/logger.js";
+import { kafka, producer } from "../lib/kafka.js";
 
 /**
  * auth-service's single {@link EventBus} instance.
@@ -35,8 +35,12 @@ export const eventBus: EventBus | null =
  * traceparent? }).
  */
 export const publishOutboxEvent = eventBus
-  ? (params: { topic: string; key: string; value: unknown; traceparent?: string }) =>
-      eventBus.publish(params)
+  ? (params: {
+      topic: string;
+      key: string;
+      value: unknown;
+      traceparent?: string;
+    }) => eventBus.publish(params)
   : async () => {
       logger.warn("[OutboxPoller] EventBus not available — cannot publish");
     };

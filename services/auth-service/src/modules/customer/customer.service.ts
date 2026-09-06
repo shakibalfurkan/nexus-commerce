@@ -1,5 +1,5 @@
 import type { ICustomerRegisterRequestDTO } from "./customer.interface.js";
-import * as IdentityRepository from "../identity/identity.repository.js";
+import * as Credential from "../../repositories/credential.js";
 import { BadRequestError } from "@nexus/errors";
 import checkOtpRestrictions from "../../utils/otp/checkOtpRestrictions.js";
 import { AuthDomainEventTypes } from "@nexus/event-contracts";
@@ -10,9 +10,10 @@ import trackOtpRequests from "../../utils/otp/trackOtpRequests.js";
 import { hashPassword } from "../../utils/passwordHandler.js";
 import config from "../../config/index.js";
 import generateOtp from "../../utils/otp/generateOtp.js";
-import { redisClient } from "../../config/redis.js";
+
 import { v5 as uuidv5 } from "uuid";
 import { UserRoles } from "../../generated/prisma/enums.js";
+import { redis } from "../../lib/redis.js";
 
 const DNS_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 
@@ -33,7 +34,7 @@ const customerRegisterRequest = async (
     throw new BadRequestError("Passwords do not match");
   }
 
-  const existingUser = await IdentityRepository.findByEmail(email);
+  const existingUser = await Credential.findByEmail(email);
   if (existingUser) {
     throw new BadRequestError("Email already in use", "email");
   }
@@ -57,13 +58,13 @@ const customerRegisterRequest = async (
     marketingOptIn,
   };
 
-  await redisClient.setex(
+  await redis.setex(
     `auth:reg:${UserRoles.CUSTOMER}:${email}`,
     35 * 60,
     JSON.stringify(registrationData),
   );
 
-  await redisClient.setex(
+  await redis.setex(
     `auth:otp:${OtpPurpose.EMAIL_VERIFICATION}:${email}`,
     5 * 60,
     otp,

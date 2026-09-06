@@ -5,7 +5,7 @@ export interface ITokenPayload {
   id: string;
   role: UserRoles[];
   email: string;
-  tokenType?: "access" | "refresh" | "reset";
+  tokenType?: "access" | "refresh" | "password_reset";
 }
 
 export const generateToken = (

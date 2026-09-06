@@ -13,7 +13,7 @@ import {
   hashPassword,
   isPasswordMatched,
 } from "../../utils/passwordHandler.js";
-import { redisClient } from "../../config/redis.js";
+
 import verifyOtp from "../../utils/otp/verifyOtp.js";
 import logger from "../../utils/logger.js";
 import checkOtpRestrictions from "../../utils/otp/checkOtpRestrictions.js";
@@ -47,6 +47,7 @@ import { AuthDomainEventTypes } from "@nexus/event-contracts";
 import { OtpPurpose, type TOtpPurpose } from "../../constant/otp.js";
 import verifyToken from "../../utils/token/verifyToken.js";
 import type { JwtPayload } from "jsonwebtoken";
+import { redis } from "../../lib/redis.js";
 
 const DNS_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 
@@ -158,12 +159,12 @@ const registerRequest = async (
     lastName,
   };
 
-  await redisClient.setex(
+  await redis.setex(
     `auth:reg:${email}`,
     35 * 60,
     JSON.stringify(registrationData),
   );
-  await redisClient.setex(
+  await redis.setex(
     `auth:otp:${OtpPurpose.EMAIL_VERIFICATION}:${email}`,
     5 * 60,
     otp,
@@ -190,7 +191,7 @@ const verifyRegistration = async (
 ): Promise<IAuthResult> => {
   const { email, otp, clientType } = payload;
 
-  const cachedData = await redisClient.get(`auth:reg:${email}`);
+  const cachedData = await redis.get(`auth:reg:${email}`);
   if (!cachedData) {
     throw new BadRequestError("Registration expired or not found");
   }
@@ -238,11 +239,11 @@ const verifyRegistration = async (
     );
   }
 
-  await redisClient
+  await redis
     .del(`auth:reg:${email}`)
     .catch((err: any) =>
       logger.error(
-        `[redisClient] Failed to delete registration cache for ${email}`,
+        `[redis] Failed to delete registration cache for ${email}`,
         err,
       ),
     );
@@ -277,7 +278,7 @@ const resendOtp = async (
 ): Promise<void> => {
   // For EMAIL_VERIFICATION, check registration cache exists
   if (purpose === OtpPurpose.EMAIL_VERIFICATION) {
-    const cachedData = await redisClient.get(`auth:reg:${email}`);
+    const cachedData = await redis.get(`auth:reg:${email}`);
     if (!cachedData) {
       throw new BadRequestError("Registration expired or not found");
     }
@@ -287,11 +288,11 @@ const resendOtp = async (
   await trackOtpRequests(email, purpose);
 
   const otp = crypto.randomInt(100000, 999999).toString();
-  await redisClient.setex(`auth:otp:${purpose}:${email}`, 5 * 60, otp);
+  await redis.setex(`auth:otp:${purpose}:${email}`, 5 * 60, otp);
 
   let firstName = "User";
   if (purpose === OtpPurpose.EMAIL_VERIFICATION) {
-    const cachedData = await redisClient.get(`auth:reg:${email}`);
+    const cachedData = await redis.get(`auth:reg:${email}`);
     if (cachedData) {
       const parsed = JSON.parse(cachedData);
       firstName = parsed.firstName ?? "User";
@@ -537,7 +538,7 @@ const requestPasswordReset = async (
       id: credential.id,
       role: credential.role,
       email: credential.email,
-      tokenType: "reset",
+      tokenType: "password_reset",
     },
     config.jwt.reset_token_secret,
     config.jwt.reset_token_expires_in,

@@ -67,7 +67,7 @@ router.post(
   AuthController.verifyPasswordReset,
 );
 
-// ─── Self-service provisioning (Task 2) ───
+// ─── Self-service provisioning ───
 router.post(
   "/provision/seller",
   authenticate,

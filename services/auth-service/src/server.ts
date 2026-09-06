@@ -8,6 +8,7 @@ import { startOutboxPoller, stopOutboxPoller } from "./events/outboxPoller.js";
 import { disconnectRedis, redis } from "./lib/redis.js";
 
 let server: Server;
+const port = process.env.PORT || config.port;
 
 async function main(): Promise<void> {
   try {
@@ -36,10 +37,8 @@ async function main(): Promise<void> {
     // Create app
     const app = createApp();
     server = createServer(app);
-    server.listen(config.port, () => {
-      logger.info(
-        `Nexus ${config.serviceName} is running on port ${config.port}`,
-      );
+    server.listen(port, () => {
+      logger.info(`Nexus ${config.serviceName} is running on port ${port}`);
     });
   } catch (err) {
     logger.error("Failed to start server:", err);

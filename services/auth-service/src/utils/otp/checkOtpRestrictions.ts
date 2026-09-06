@@ -1,6 +1,6 @@
-import { redisClient } from "../../config/redis.js";
 import { BadRequestError } from "@nexus/errors";
 import { OtpPurpose, type TOtpPurpose } from "../../constant/otp.js";
+import { redis } from "../../lib/redis.js";
 
 const checkOtpRestrictions = async (
   email: string,
@@ -9,7 +9,7 @@ const checkOtpRestrictions = async (
   const normalizedEmail = email.toLowerCase().trim();
   const purposeSuffix = `:${purpose}`;
 
-  const isBlocked = await redisClient.get(
+  const isBlocked = await redis.get(
     `auth:otp_block:${normalizedEmail}${purposeSuffix}`,
   );
   if (isBlocked) {
@@ -19,7 +19,7 @@ const checkOtpRestrictions = async (
     );
   }
 
-  const isSpamBlocked = await redisClient.get(
+  const isSpamBlocked = await redis.get(
     `auth:otp_spam_block:${normalizedEmail}${purposeSuffix}`,
   );
   if (isSpamBlocked) {
@@ -29,7 +29,7 @@ const checkOtpRestrictions = async (
     );
   }
 
-  const isInCooldown = await redisClient.get(
+  const isInCooldown = await redis.get(
     `auth:otp_cooldown:${normalizedEmail}${purposeSuffix}`,
   );
   if (isInCooldown) {

@@ -1,5 +1,5 @@
-import type { UserRoles } from "../../generated/prisma/enums.js";
-import { prisma } from "../../lib/prisma.js";
+import type { UserRoles } from "../generated/prisma/enums.js";
+import { prisma } from "../lib/prisma.js";
 
 export async function findByEmail(email: string) {
   return prisma.credential.findUnique({
