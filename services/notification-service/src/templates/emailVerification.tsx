@@ -10,8 +10,6 @@ import { EmailLayout, emailStyles } from "./emailLayout.js";
  */
 
 export interface EmailVerificationEmailProps {
-  /** Recipient's first name (used for personalization only). */
-  firstName: string;
   /** Recipient email address. */
   email: string;
   /** One-time passcode to verify the email address. */
@@ -19,7 +17,6 @@ export interface EmailVerificationEmailProps {
 }
 
 export function EmailVerificationEmail({
-  firstName,
   email,
   otp,
 }: EmailVerificationEmailProps) {
@@ -27,12 +24,10 @@ export function EmailVerificationEmail({
     <EmailLayout previewText={`Your Nexus verification code is ${otp}`}>
       <Text style={emailStyles.heading}>Verify your email address</Text>
 
-      <Text style={emailStyles.paragraph}>Hi {firstName},</Text>
-
       <Text style={emailStyles.paragraph}>
         Use the code below to verify{" "}
         <span style={{ fontWeight: 600 }}>{email}</span> and finish setting up
-        your Nexus account. This code expires in 10 minutes.
+        your Nexus account. This code expires in 5 minutes.
       </Text>
 
       <Section style={{ textAlign: "center", margin: "28px 0" }}>
