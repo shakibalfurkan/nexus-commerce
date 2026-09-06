@@ -41,3 +41,25 @@ Signed by `generateToken()` (`HS256`) with `config.jwt.refresh_token_secret`, `e
 - New repo: `src/repositories/refreshToken.ts` (matches existing `repositories/credential.ts` pattern; uses `lib/redis.js` instance like other modules — consistent with current codebase style).
 - `issueToken.ts` keeps only `issueAccessToken`; `utils/token/revokeToken.ts` is deleted (its logic moves into the new repo); dead Prisma refresh functions removed from `modules/auth/auth.repository.ts`.
 - TTL semantics: refresh expiry is 7d from issue (sliding on rotation), matching current `expiresAt = now + 7d` per issuance.
+
+---
+
+### STEP 2 — Redis key design (completed 2026-09-06)
+
+- Key: `auth:refresh:<credentialId>:<familyId>` — fits `<service>:<purpose>:<id>` convention (matches existing `auth:otp:…` / `auth:reg:…` patterns)
+- Value: JSON `{ tokenHash: sha256(currentToken), createdAt: ISO }` — no `isRevoked` field; a hash mismatch on lookup IS the reuse signal
+- TTL: `7 * 24 * 60 * 60` seconds (7d from issue, sliding on rotation — matches old `expiresAt = now + 7d` per issuance); Redis expires keys natively, no cleanup job
+- Concurrency: rotation uses a Lua script (compare-hash-then-overwrite) so two concurrent refreshes on one family cannot both win; the loser is treated as reuse. (Note: unlike the rate limiter, refresh must fail CLOSED on Redis errors — without the store we cannot verify rotation/reuse, so errors propagate as 500.)
+
+### STEP 3 — New Redis-backed repository (completed 2026-09-06)
+
+New file `src/repositories/refreshToken.ts` (matches existing `repositories/credential.ts` pattern, uses the `lib/redis.js` ioredis instance like the rest of the module):
+
+- `issueRefreshToken(payload, credentialId, familyId?)` — signs the JWT **with a new `familyId` claim embedded** (payload-shape fix from audit), `SET key value EX 7d` (new familyId = new login; same familyId = rotation)
+- `findActiveTokenHash(credentialId, familyId)` — `GET` + parse, returns `tokenHash` or `null` (missing key = expired past TTL or already revoked; corrupt JSON logged + treated as null)
+- `rotateRefreshToken(credentialId, familyId, expectedTokenHash, payload)` — Lua `EVAL` atomic compare-hash-then-overwrite; returns new token or `null` when the family was already rotated/expired (reuse signal)
+- `revokeTokenFamily(credentialId, familyId)` — `DEL` the single family key (whole family shares one key holding only the current token)
+- `revokeRefreshToken(token)` — decodes the JWT (`jwt.decode`, no throw on garbage) and `DEL`s the key; keeps the logout call site unchanged
+- `hashRefreshToken(token)` — exported sha256 helper so the service flow and the repo share one hashing implementation
+
+`ITokenPayload` (`utils/token/generateToken.ts`) extended with optional `activeRole` + `familyId` claims (only the refresh token embeds `familyId`; access tokens unchanged).

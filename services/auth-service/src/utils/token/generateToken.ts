@@ -5,6 +5,8 @@ export interface ITokenPayload {
   id: string;
   role: UserRoles[];
   email: string;
+  activeRole?: UserRoles;
+  familyId?: string;
   tokenType?: "access" | "refresh" | "password_reset";
 }
 
