@@ -25,6 +25,12 @@ Render.
   from that config (Redis, Prisma, Kafka clients — anything with a connection
   lifecycle / connect-disconnect). A file that calls `createXClient()` and
   exports a live instance belongs in `lib/`, never `config/`.
+- When multiple valid solutions exist, prefer the simplest one that meets the
+  requirement — do not add abstraction, configuration, or indirection for
+  hypothetical future needs. If a simpler pattern already used elsewhere in
+  the codebase solves the problem, reuse it rather than introducing a new
+  one. Flag trade-offs explicitly rather than silently picking the more
+  complex option.
 
 ## Security
 
