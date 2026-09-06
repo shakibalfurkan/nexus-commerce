@@ -19,27 +19,6 @@ export async function updatePassword(id: string, hashedPassword: string) {
   });
 }
 
-export async function findRefreshToken(token: string) {
-  return prisma.refreshToken.findUnique({
-    where: { token },
-    include: { credential: true },
-  });
-}
-
-export async function revokeRefreshToken(token: string) {
-  return prisma.refreshToken.update({
-    where: { token },
-    data: { isRevoked: true },
-  });
-}
-
-export async function revokeTokenFamily(familyId: string) {
-  return prisma.refreshToken.updateMany({
-    where: { familyId },
-    data: { isRevoked: true },
-  });
-}
-
 export async function createPasswordReset(data: {
   credentialId: string;
   resetToken: string;

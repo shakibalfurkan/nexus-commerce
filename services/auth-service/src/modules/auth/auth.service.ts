@@ -28,25 +28,25 @@ import type {
 import { createUserProfile } from "../../lib/axiosClients/userServiceClient.js";
 import { buildJwtPayload } from "../../utils/token/buildJwtPayload.js";
 import {
-  issueAccessToken,
-  issueRefreshToken,
-} from "../../utils/token/issueToken.js";
-import {
   checkLockout,
   handleFailedLogin,
   resetLoginAttempts,
 } from "../../utils/handleLogin.js";
+import { issueAccessToken } from "../../utils/token/issueToken.js";
 import {
+  findActiveTokenHash,
+  hashRefreshToken,
+  issueRefreshToken,
   revokeRefreshToken,
   revokeTokenFamily,
-} from "../../utils/token/revokeToken.js";
+  rotateRefreshToken,
+} from "../../repositories/refreshToken.js";
 import { generateToken } from "../../utils/token/generateToken.js";
 import * as AuthRepository from "../../modules/auth/auth.repository.js";
 import { emitDomainEvent } from "@nexus/kafka";
 import { AuthDomainEventTypes } from "@nexus/event-contracts";
 import { OtpPurpose, type TOtpPurpose } from "../../constant/otp.js";
 import verifyToken from "../../utils/token/verifyToken.js";
-import type { JwtPayload } from "jsonwebtoken";
 import { redis } from "../../lib/redis.js";
 
 const DNS_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
@@ -462,50 +462,68 @@ const login = async (payload: {
 // ═══════════════════════════════════════════════════════════════════
 
 const refreshToken = async (token: string): Promise<ITokenRefreshResult> => {
-  const storedToken = await prisma.refreshToken.findUnique({
-    where: { token },
-    include: { credential: true },
-  });
-
-  if (!storedToken) {
-    throw new UnauthorizedError("Invalid refresh token");
-  }
-
-  if (storedToken.isRevoked) {
-    await revokeTokenFamily(storedToken.familyId);
-    logger.warn(
-      `[RTR] Token reuse detected — revoked family ${storedToken.familyId} for credential ${storedToken.credentialId}`,
-    );
-    throw new UnauthorizedError("Refresh token has been revoked");
-  }
-
-  if (storedToken.expiresAt < new Date()) {
-    await revokeRefreshToken(token);
-    throw new UnauthorizedError("Refresh token has expired");
-  }
-
+  // 1. Verify signature/expiry first — an invalid signature or expired JWT
+  //    rejects immediately, with no Redis call needed
   const decodedToken = verifyToken(
     token,
     config.jwt.refresh_token_secret!,
     "refresh",
-  ) as JwtPayload;
-
-  const { activeRole } = decodedToken;
-
-  await revokeRefreshToken(token);
-
-  const jwtPayload = buildJwtPayload({ ...storedToken.credential, activeRole });
-  const accessToken = issueAccessToken(jwtPayload);
-  const { token: newRefreshToken } = await issueRefreshToken(
-    jwtPayload,
-    storedToken.credentialId,
-    storedToken.familyId,
   );
+
+  const credentialId = decodedToken.id;
+  const familyId = decodedToken.familyId;
+  const activeRole = decodedToken.activeRole;
+
+  if (!familyId || !activeRole) {
+    throw new UnauthorizedError("Invalid refresh token");
+  }
+
+  // 2. Fetch the stored hash — null means expired (past TTL) or already revoked
+  const storedTokenHash = await findActiveTokenHash(credentialId, familyId);
+  if (!storedTokenHash) {
+    throw new UnauthorizedError("Invalid refresh token");
+  }
+
+  // 3. Hash-compare the presented token against the stored hash:
+  //    mismatch = reuse of an already-rotated token → revoke the whole family
+  if (hashRefreshToken(token) !== storedTokenHash) {
+    await revokeTokenFamily(credentialId, familyId);
+    logger.warn(
+      `[RTR] Token reuse detected — revoked family ${familyId} for credential ${credentialId}`,
+    );
+    throw new UnauthorizedError("Refresh token has been revoked");
+  }
+
+  // 4. Rotate atomically (Lua compare-hash-then-overwrite) so two concurrent
+  //    refresh attempts on the same family cannot race — the loser is reuse
+  const jwtPayload = buildJwtPayload({
+    id: credentialId,
+    email: decodedToken.email,
+    role: decodedToken.role,
+    activeRole,
+  });
+
+  const rotated = await rotateRefreshToken(
+    credentialId,
+    familyId,
+    storedTokenHash,
+    jwtPayload,
+  );
+
+  if (!rotated) {
+    await revokeTokenFamily(credentialId, familyId);
+    logger.warn(
+      `[RTR] Token reuse detected — revoked family ${familyId} for credential ${credentialId}`,
+    );
+    throw new UnauthorizedError("Refresh token has been revoked");
+  }
+
+  const accessToken = issueAccessToken(jwtPayload);
 
   return {
     accessToken,
-    refreshToken: newRefreshToken,
-    role: storedToken.credential.role,
+    refreshToken: rotated.token,
+    role: decodedToken.role,
   };
 };
 

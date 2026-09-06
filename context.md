@@ -63,3 +63,21 @@ New file `src/repositories/refreshToken.ts` (matches existing `repositories/cred
 - `hashRefreshToken(token)` — exported sha256 helper so the service flow and the repo share one hashing implementation
 
 `ITokenPayload` (`utils/token/generateToken.ts`) extended with optional `activeRole` + `familyId` claims (only the refresh token embeds `familyId`; access tokens unchanged).
+
+### STEP 4 — Rewritten refreshToken() flow (completed 2026-09-06)
+
+`AuthService.refreshToken(token)` in `modules/auth/auth.service.ts` now:
+
+1. `verifyToken(token, refresh_token_secret, "refresh")` FIRST — invalid signature / expired JWT rejects immediately with no Redis call (old DB expiry branch is gone; Redis TTL replaces `expiresAt` checks)
+2. Decodes `credentialId` (= `id` claim) + `familyId` (+ `activeRole`) from the verified payload; missing `familyId`/`activeRole` → rejected as invalid (also covers pre-migration tokens signed without the claim)
+3. `findActiveTokenHash(credentialId, familyId)` — `null` → `401 "Invalid refresh token"` (expired past TTL or already revoked)
+4. `hashRefreshToken(token) !== storedTokenHash` → **reuse**: `revokeTokenFamily(credentialId, familyId)` (DELETE key) + the preserved `[RTR] Token reuse detected — revoked family … for credential …` warning + `UnauthorizedError("Refresh token has been revoked")`
+5. MATCH → `rotateRefreshToken(...)` Lua compare-hash-then-overwrite under the SAME familyId; a `null` (lost a concurrent race) is treated as reuse with the same revoke + warning path; issues new access token from claims (`activeRole` carried from the presented token, as before) and returns the rotated refresh token
+
+Call-site cleanup in the same change:
+- `utils/token/issueToken.ts` — now only `issueAccessToken` (Prisma write + `issueRefreshToken` removed; `REFRESH_TOKEN_EXPIRY_MS` moved into the repo as `REFRESH_TOKEN_TTL_SECONDS`)
+- `utils/token/revokeToken.ts` — deleted (Prisma revocation logic replaced by the repo)
+- `modules/auth/auth.repository.ts` — dead Prisma refresh functions (`findRefreshToken`, `revokeRefreshToken`, `revokeTokenFamily`) removed; `logout()` call site unchanged (repo's `revokeRefreshToken(token)` handles decode + DEL)
+- `tsc` build verified passing
+
+Note: old behavior of `logout` on a garbage token was a Prisma P2025 throw; now it is a silent no-op (nothing to delete) — strictly better for a logout endpoint.
