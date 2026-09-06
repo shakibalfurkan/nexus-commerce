@@ -11,9 +11,9 @@ interface CircuitBreakerState {
 
 const services = new Map<string, CircuitBreakerState>();
 
-const THRESHOLD = config.circuit_breaker_threshold;
-const TIMEOUT = config.circuit_breaker_timeout;
-const RESET_TIMEOUT = config.circuit_breaker_reset_timeout;
+const THRESHOLD = config.circuit_breaker.threshold;
+const TIMEOUT = config.circuit_breaker.timeout;
+const RESET_TIMEOUT = config.circuit_breaker.reset_timeout;
 
 // ----- Internal Helpers ---------
 

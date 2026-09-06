@@ -1,32 +1,22 @@
 import { createServer, type Server } from "http";
 import createApp from "./app.js";
 import config from "./config/index.js";
-import { redisClient } from "./config/redis.js";
+import { disconnectRedis, redis } from "./lib/redis.js";
 import logger from "./utils/logger.js";
 
 let server: Server;
+const port = process.env.PORT || config.port;
 
 async function main() {
   try {
-    const app = createApp();
-
     // Verify Redis connection
-    try {
-      await redisClient.ping();
-      logger.info("Redis Database handshake verified successfully.");
-    } catch (redisError) {
-      logger.warn(
-        "Redis connection failed. Rate limiting will fall back to in-memory store.",
-        redisError,
-      );
-    }
+    await redis!.ping();
+    logger.info("Redis Database handshake verified successfully.");
 
+    const app = createApp();
     server = createServer(app);
-
-    server.listen(config.port, () => {
-      logger.info(
-        `Nexus ${config.serviceName} is running on port ${config.port}`,
-      );
+    server.listen(port, () => {
+      logger.info(`Nexus ${config.serviceName} is running on port ${port}`);
     });
   } catch (err) {
     logger.error("Failed to start server:", err);
@@ -62,7 +52,8 @@ const shutdown = async (signal: string) => {
     }
 
     logger.info("Closing stateful infrastructure channels...");
-    await redisClient.quit();
+
+    await Promise.allSettled([disconnectRedis()]);
 
     logger.info(
       "All stateful connections closed cleanly. Graceful exit success.",

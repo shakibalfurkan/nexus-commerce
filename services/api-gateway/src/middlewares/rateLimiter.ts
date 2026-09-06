@@ -3,7 +3,7 @@ import { RedisStore, type RedisReply } from "rate-limit-redis";
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "../utils/logger.js";
 import { TooManyRequestsError } from "@nexus/errors";
-import { redisClient } from "../config/redis.js";
+import { redis } from "../lib/redis.js";
 import config from "../config/index.js";
 
 const onLimitReached = (
@@ -38,7 +38,7 @@ export const globalLimiter = rateLimit({
       ...args: string[]
     ): Promise<RedisReply> => {
       try {
-        return (await redisClient.call(command, ...args)) as RedisReply;
+        return (await redis!.call(command, ...args)) as RedisReply;
       } catch (error) {
         logger.error(
           "Redis store connection fault. Falling back to fail-open routing:",
