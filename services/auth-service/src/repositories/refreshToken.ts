@@ -128,6 +128,24 @@ export async function revokeTokenFamily(
   await redis.del(refreshKey(credentialId, familyId));
 }
 
+export async function revokeAllRefreshTokens(credentialId: string): Promise<void> {
+  const pattern = `auth:refresh:${credentialId}:*`;
+  let cursor = "0";
+  do {
+    const [next, keys] = await redis.scan(
+      cursor,
+      "MATCH",
+      pattern,
+      "COUNT",
+      100,
+    );
+    cursor = next;
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
+  } while (cursor !== "0");
+}
+
 export async function revokeRefreshToken(token: string): Promise<void> {
   try {
     const decoded = jwt.decode(token) as

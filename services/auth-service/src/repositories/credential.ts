@@ -6,55 +6,36 @@ export async function findByEmail(email: string) {
     where: { email },
   });
 }
-export async function findByEmailExcludingDeleted(email: string) {
-  return prisma.credential.findUnique({
-    where: { email, isDeleted: false },
-  });
-}
+
 export async function findById(id: string) {
   return prisma.credential.findUnique({
     where: { id },
   });
 }
 
-export async function createCredential(data: {
-  email: string;
-  password: string;
-  role: UserRoles[];
-}) {
-  return prisma.credential.create({
-    data: {
-      email: data.email,
-      password: data.password,
-      role: data.role,
-    },
+export async function markDeleted(id: string, deletedAt: Date): Promise<void> {
+  await prisma.credential.updateMany({
+    where: { id },
+    data: { isDeleted: true, deletedAt },
   });
 }
 
-export async function incrementFailedLoginAttempts(id: string) {
-  return prisma.credential.update({
+export async function markRestored(id: string): Promise<void> {
+  await prisma.credential.updateMany({
     where: { id },
-    data: {
-      failedLoginAttempts: { increment: 1 },
-    },
+    data: { isDeleted: false, deletedAt: null },
   });
 }
 
-export async function resetFailedLoginAttempts(id: string) {
-  return prisma.credential.update({
-    where: { id },
-    data: {
-      failedLoginAttempts: 0,
-      lockedUntil: null,
-    },
+export async function addRoleIfUnchanged(
+  id: string,
+  role: UserRoles,
+  expectedRoles: UserRoles[],
+): Promise<boolean> {
+  const result = await prisma.credential.updateMany({
+    where: { id, role: { equals: expectedRoles } },
+    data: { role: Array.from(new Set([...expectedRoles, role])) },
   });
-}
 
-export async function lockAccount(id: string, lockedUntil: Date) {
-  return prisma.credential.update({
-    where: { id },
-    data: {
-      lockedUntil,
-    },
-  });
+  return result.count === 1;
 }
