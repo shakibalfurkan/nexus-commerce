@@ -9,7 +9,13 @@ import sendResponse from "../../utils/sendResponse.js";
 import { parsePaginationParams } from "../../pagination/cursorPagination.js";
 
 /**
- * GET /admin/dead-letters
+ * Dead-letter HTTP surface — guarded by `auth(ADMIN, SUPER_ADMIN)` on the
+ * router itself. The consumer + repository live in this same module because
+ * the DLQ Kafka consumer uses the same repository.
+ */
+
+/**
+ * GET /dead-letters
  * Cursor-paginated list, filterable by sourceService and/or eventType.
  */
 const listDeadLetters = catchAsync(async (req: Request, res: Response) => {
@@ -52,7 +58,7 @@ const listDeadLetters = catchAsync(async (req: Request, res: Response) => {
 });
 
 /**
- * POST /admin/dead-letters/:id/redrive
+ * POST /dead-letters/:id/redrive
  * Manual redrive (the only permitted path for payment/order domains).
  * Republishes the preserved raw payload to the domain-events topic so normal
  * consumers retry it. The row is kept for audit; redrive count/history lives
@@ -106,4 +112,7 @@ const redriveDeadLetter = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-export const DeadLetterController = { listDeadLetters, redriveDeadLetter };
+export const DeadLetterController = {
+  listDeadLetters,
+  redriveDeadLetter,
+};
