@@ -12,7 +12,7 @@ if (!connectionString) {
 }
 
 const POOL_CONFIG = {
-  poolSize: 10,
+  max: 3,
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
   maxUses: 7500,

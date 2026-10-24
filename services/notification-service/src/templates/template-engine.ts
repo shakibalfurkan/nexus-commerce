@@ -1,6 +1,8 @@
 import { render } from "@react-email/render";
 import type { ComponentProps, ReactElement } from "react";
 
+import { AccountRestoreEmail } from "./accountRestore.js";
+import { AdminInviteEmail } from "./adminInvite.js";
 import { EmailVerificationEmail } from "./emailVerification.js";
 import { PasswordResetEmail } from "./passwordReset.js";
 import { WelcomeEmail } from "./welcome.js";
@@ -18,12 +20,19 @@ import { WelcomeEmail } from "./welcome.js";
  * default (unlike string-concatenated EJS/Handlebars templates).
  */
 
-export type TemplateKey = "email-verification" | "password-reset" | "welcome";
+export type TemplateKey =
+  | "email-verification"
+  | "password-reset"
+  | "account-restore"
+  | "admin-invite"
+  | "welcome";
 
 /** Maps each template key to its concrete component type. */
 export type TemplateComponents = {
   "email-verification": typeof EmailVerificationEmail;
   "password-reset": typeof PasswordResetEmail;
+  "account-restore": typeof AccountRestoreEmail;
+  "admin-invite": typeof AdminInviteEmail;
   welcome: typeof WelcomeEmail;
 };
 
@@ -50,6 +59,12 @@ export const templateRegistry: TemplateRegistry = {
   },
   "password-reset": {
     render: (props) => PasswordResetEmail(props),
+  },
+  "account-restore": {
+    render: (props) => AccountRestoreEmail(props),
+  },
+  "admin-invite": {
+    render: (props) => AdminInviteEmail(props),
   },
   welcome: {
     render: (props) => WelcomeEmail(props),

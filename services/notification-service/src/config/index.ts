@@ -44,7 +44,7 @@ export default {
     apiKey: process.env.RESEND_API_KEY,
     fromEmail: optionalEnv(
       "RESEND_FROM_EMAIL",
-      "Nexus <no-reply@yourdomain.com>",
+      "Nexus <onboarding@resend.dev>",
     ),
     timeoutMs: Number(process.env.RESEND_TIMEOUT_MS) || 10_000,
   },

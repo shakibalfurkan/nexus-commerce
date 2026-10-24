@@ -1,10 +1,12 @@
 import { z } from "zod";
 import {
+  AccountRestoreRequestedEventSchema,
   AuthDomainEventTypes,
   EmailVerificationOtpEventSchema,
   PasswordResetRequestedEventSchema,
   UserDomainEventTypes,
   UserRegisteredEventSchema,
+  type AccountRestoreRequestedEvent,
   type EmailVerificationOtpEvent,
   type PasswordResetRequestedEvent,
   type UserRegisteredEvent,
@@ -28,8 +30,10 @@ import {
 // ─── Domain Event Names ───
 
 export const DomainEventNames = [
+  AuthDomainEventTypes.ACCOUNT_RESTORE_REQUESTED,
   AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
   AuthDomainEventTypes.PASSWORD_RESET_REQUESTED,
+  AuthDomainEventTypes.ADMIN_INVITE_CREATED,
   UserDomainEventTypes.USER_REGISTERED,
 ] as const;
 
@@ -44,6 +48,7 @@ export type TDomainEventName = z.infer<typeof DomainEventNameSchema>;
 // ─── Discriminated Union (Kafka boundary validation) ───
 
 export const DomainEventSchema = z.discriminatedUnion("eventType", [
+  AccountRestoreRequestedEventSchema,
   EmailVerificationOtpEventSchema,
   PasswordResetRequestedEventSchema,
   UserRegisteredEventSchema,
@@ -82,6 +87,11 @@ export const domainEventRegistry = {
     extractRecipient: (event: PasswordResetRequestedEvent) =>
       event.payload.email,
     getSubject: () => "Reset your Nexus password",
+  },
+  [AuthDomainEventTypes.ACCOUNT_RESTORE_REQUESTED]: {
+    templateKey: "account-restore",
+    extractRecipient: (event: AccountRestoreRequestedEvent) => event.payload.email,
+    getSubject: () => "Restore your Nexus account",
   },
   [UserDomainEventTypes.USER_REGISTERED]: {
     templateKey: "welcome",
