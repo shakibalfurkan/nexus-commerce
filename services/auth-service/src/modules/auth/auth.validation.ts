@@ -1,8 +1,14 @@
 import z from "zod";
 
-// ─── Shared email schema ───
+/**
+ * Shared auth validation primitives + the schemas for the surface-agnostic
+ * session routes. Role modules (`customer/`, `seller/`, `admin/`) import these
+ * primitives so email/password/OTP rules are defined exactly once.
+ */
+
 const emailSchema = z.email().trim().toLowerCase();
 
+/** Applied to NEW passwords only (registration, admin invite accept, reset). */
 const passwordSchema = z
   .string()
   .min(8, "Password must be at least 8 characters long")
@@ -13,65 +19,25 @@ const passwordSchema = z
   .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character")
   .trim();
 
-// export const shopAddressValidationSchema = z.object({
-//   street: z.string().min(1, "Street is required"),
-//   city: z.string().min(1, "City is required"),
-//   state: z.string().min(1, "State is required"),
-//   postalCode: z.string().min(1, "Postal code is required"),
-//   country: z.string().min(1, "Country is required"),
-//   coordinates: z
-//     .object({
-//       lat: z.number().refine((val) => val >= -90 && val <= 90, {
-//         message: "Latitude must be between -90 and 90",
-//       }),
-//       lng: z.number().refine((val) => val >= -180 && val <= 180, {
-//         message: "Longitude must be between -180 and 180",
-//       }),
-//     })
-//     .optional(),
-//   formattedAddress: z.string().optional(),
-// });
+const otpSchema = z
+  .string()
+  .length(6, "OTP must be exactly 6 digits")
+  .regex(/^\d+$/, "OTP must contain only digits");
 
-const registerRequestValidationSchema = z.object({
-  body: z.object({
-    firstName: z.string().min(1, "First name is required"),
-    lastName: z.string().min(1, "Last name is required"),
-    email: emailSchema,
-    role: z.enum(["SELLER", "CUSTOMER"]),
-    password: passwordSchema,
-  }),
-});
+const phoneSchema = z
+  .string()
+  .regex(/^\+?[1-9]\d{6,14}$/, "Invalid phone number format");
 
-const verifyRegistrationValidationSchema = z.object({
-  body: z.object({
-    email: emailSchema,
-    otp: z
-      .string()
-      .length(6, "OTP must be exactly 6 digits")
-      .regex(/^\d+$/, "OTP must contain only digits"),
-  }),
-});
-
-const resendOtpValidationSchema = z.object({
-  body: z.object({
-    email: emailSchema,
-  }),
-});
-
+/**
+ * Login only checks password PRESENCE — never re-validates an existing
+ * credential against the current password policy, otherwise tightening the
+ * policy would lock out every account created under the old one.
+ */
 const loginValidationSchema = z.object({
   body: z.object({
     email: emailSchema,
-    password: passwordSchema,
-    role: z.enum(["customer", "seller", "admin"]),
+    password: z.string().min(1, "Password is required"),
   }),
-});
-
-const provisionSellerValidationSchema = z.object({
-  body: z.object({}),
-});
-
-const provisionCustomerValidationSchema = z.object({
-  body: z.object({}),
 });
 
 const requestPasswordResetValidationSchema = z.object({
@@ -87,13 +53,27 @@ const verifyPasswordResetValidationSchema = z.object({
   }),
 });
 
+const requestAccountRestoreValidationSchema = z.object({
+  body: z.object({
+    email: emailSchema,
+  }),
+});
+
+const verifyAccountRestoreValidationSchema = z.object({
+  body: z.object({
+    email: emailSchema,
+    otp: otpSchema,
+  }),
+});
+
 export const AuthValidation = {
-  registerRequestValidationSchema,
-  verifyRegistrationValidationSchema,
-  resendOtpValidationSchema,
+  requestAccountRestoreValidationSchema,
+  verifyAccountRestoreValidationSchema,
+  emailSchema,
+  passwordSchema,
+  otpSchema,
+  phoneSchema,
   loginValidationSchema,
-  provisionSellerValidationSchema,
-  provisionCustomerValidationSchema,
   requestPasswordResetValidationSchema,
   verifyPasswordResetValidationSchema,
 };

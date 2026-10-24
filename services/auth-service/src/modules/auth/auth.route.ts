@@ -1,45 +1,15 @@
 import { Router } from "express";
 import { AuthController } from "./auth.controller.js";
+import { AuthValidation } from "./auth.validation.js";
 import validateRequest from "../../middlewares/validateRequest.js";
 import { rateLimiter } from "../../middlewares/rateLimiter.js";
-import { AuthValidation } from "./auth.validation.js";
-import { authenticate } from "../../middlewares/auth.js";
 
+/**
+ * Session-level routes shared by every surface — mounted at `/auth`.
+ * Registration and login live with their role modules (`customer/`, `seller/`,
+ * `admin/`) because they differ by client surface.
+ */
 const router: Router = Router();
-
-router.post(
-  "/register-request",
-  rateLimiter({
-    maxRequests: 5,
-    windowSeconds: 300,
-    route: "register-request",
-  }),
-  validateRequest(AuthValidation.registerRequestValidationSchema),
-  AuthController.registerRequest,
-);
-
-router.post(
-  "/verify-registration",
-  validateRequest(AuthValidation.verifyRegistrationValidationSchema),
-  AuthController.verifyRegistration,
-);
-
-router.post(
-  "/resend-otp",
-  validateRequest(AuthValidation.resendOtpValidationSchema),
-  AuthController.resendOtp,
-);
-
-router.post(
-  "/login",
-  rateLimiter({
-    maxRequests: 5,
-    windowSeconds: 60,
-    route: "login",
-  }),
-  validateRequest(AuthValidation.loginValidationSchema),
-  AuthController.login,
-);
 
 router.post("/refresh-token", AuthController.refreshToken);
 
@@ -67,19 +37,18 @@ router.post(
   AuthController.verifyPasswordReset,
 );
 
-// ─── Self-service provisioning ───
 router.post(
-  "/provision/seller",
-  authenticate,
-  validateRequest(AuthValidation.provisionSellerValidationSchema),
-  AuthController.provisionSeller,
+  "/restore/request",
+  rateLimiter({ maxRequests: 3, windowSeconds: 300, route: "account-restore" }),
+  validateRequest(AuthValidation.requestAccountRestoreValidationSchema),
+  AuthController.requestAccountRestore,
 );
 
 router.post(
-  "/provision/customer",
-  authenticate,
-  validateRequest(AuthValidation.provisionCustomerValidationSchema),
-  AuthController.provisionCustomer,
+  "/restore/verify",
+  rateLimiter({ maxRequests: 3, windowSeconds: 300, route: "account-restore-verify" }),
+  validateRequest(AuthValidation.verifyAccountRestoreValidationSchema),
+  AuthController.verifyAccountRestore,
 );
 
 export const AuthRoutes = router;

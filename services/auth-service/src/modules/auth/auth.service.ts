@@ -5,34 +5,27 @@ import {
   BadRequestError,
   InternalServerError,
   UnauthorizedError,
-  ForbiddenError,
-  ConflictError,
 } from "@nexus/errors";
 import { prisma } from "../../lib/prisma.js";
+import { redis } from "../../lib/redis.js";
+import logger from "../../utils/logger.js";
 import {
   hashPassword,
   isPasswordMatched,
 } from "../../utils/passwordHandler.js";
-
+import generateOtp from "../../utils/otp/generateOtp.js";
 import verifyOtp from "../../utils/otp/verifyOtp.js";
-import logger from "../../utils/logger.js";
 import checkOtpRestrictions from "../../utils/otp/checkOtpRestrictions.js";
 import trackOtpRequests from "../../utils/otp/trackOtpRequests.js";
+import { OtpPurpose } from "../../constant/otp.js";
 import { UserRoles } from "../../generated/prisma/enums.js";
-import createInternalSignature from "../../utils/createInternalSignature.js";
-import type {
-  IAuthResult,
-  ITokenRefreshResult,
-  TRegisterRequest,
-} from "./auth.interface.js";
-import { createUserProfile } from "../../lib/axiosClients/userServiceClient.js";
+import type { Credential } from "../../generated/prisma/client.js";
+import { emitDomainEvent } from "@nexus/kafka";
+import { AuthDomainEventTypes } from "@nexus/event-contracts";
 import { buildJwtPayload } from "../../utils/token/buildJwtPayload.js";
-import {
-  checkLockout,
-  handleFailedLogin,
-  resetLoginAttempts,
-} from "../../utils/handleLogin.js";
 import { issueAccessToken } from "../../utils/token/issueToken.js";
+import { generateToken } from "../../utils/token/generateToken.js";
+import verifyToken from "../../utils/token/verifyToken.js";
 import {
   findActiveTokenHash,
   hashRefreshToken,
@@ -41,216 +34,138 @@ import {
   revokeTokenFamily,
   rotateRefreshToken,
 } from "../../repositories/refreshToken.js";
-import { generateToken } from "../../utils/token/generateToken.js";
-import * as AuthRepository from "../../modules/auth/auth.repository.js";
-import { emitDomainEvent } from "@nexus/kafka";
-import { AuthDomainEventTypes } from "@nexus/event-contracts";
-import { OtpPurpose, type TOtpPurpose } from "../../constant/otp.js";
-import verifyToken from "../../utils/token/verifyToken.js";
-import { redis } from "../../lib/redis.js";
+import * as CredentialRepository from "../../repositories/credential.js";
+import * as AuditLogRepository from "../../repositories/auditLog.js";
+import {
+  createUserProfile,
+  restoreUser,
+} from "../../lib/axiosClients/userServiceClient.js";
+import {
+  checkLockout,
+  handleFailedLogin,
+  resetLoginAttempts,
+} from "../../utils/handleLogin.js";
+import type {
+  IAuthResult,
+  ICachedRegistration,
+  ICompleteRegistrationInput,
+  IRequestContext,
+  IStartRegistrationInput,
+  ITokenRefreshResult,
+  TClientSurface,
+  TRegisterableRole,
+} from "./auth.interface.js";
+
+/**
+ * Shared auth logic — everything a login surface or role registration needs and
+ * nothing role-specific:
+ *
+ *  - credential verification (exactly one password check per login)
+ *  - session issuance / refresh / logout
+ *  - password reset
+ *  - the OTP-backed registration core, reused by `customer/` and `seller/`
+ *  - the role replica sync consumed from user-service events
+ *
+ * Role modules own only their schemas, routes and role gate.
+ */
+
+// ─── Constants ───
 
 const DNS_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+const REGISTRATION_TTL_SECONDS = 35 * 60;
+const OTP_TTL_SECONDS = 5 * 60;
+const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
 
-// ─── Helper: Map body role + header to UserRoles ───
-function deriveRequiredRole(
-  bodyRole: string,
-  clientType: string | undefined,
-): UserRoles {
-  if (!clientType || !bodyRole) {
-    throw new BadRequestError("Missing role or client type");
-  }
-
-  const validPairs: Record<string, string> = {
-    "customer-web": "customer",
-    "seller-web": "seller",
-    "admin-web": "admin",
-  };
-
-  const expectedBodyRole = validPairs[clientType];
-  if (!expectedBodyRole) {
-    throw new BadRequestError("Invalid or unrecognized X-Client-Type");
-  }
-
-  if (bodyRole !== expectedBodyRole) {
-    throw new BadRequestError(
-      "Client type and role mismatch",
-      "CLIENT_ROLE_MISMATCH",
-    );
-  }
-
-  // Map to UserRoles
-  if (clientType === "customer-web") return UserRoles.CUSTOMER;
-  if (clientType === "seller-web") return UserRoles.SELLER;
-  if (clientType === "admin-web") return UserRoles.ADMIN; // catch-all; SUPER_ADMIN handled during check
-
-  throw new BadRequestError("Invalid or unrecognized X-Client-Type");
-}
-
-// ─── Helper: Extract role mapping ───
-function mapBodyRoleToUserRole(bodyRole: string): UserRoles {
-  if (bodyRole === "customer") return UserRoles.CUSTOMER;
-  if (bodyRole === "seller") return UserRoles.SELLER;
-  if (bodyRole === "admin") return UserRoles.ADMIN;
-  throw new BadRequestError("Invalid role in request body");
-}
+/** Surface → reset page. A data map, not a chain of `if (clientType === …)`. */
+const RESET_PAGE_BY_SURFACE: Record<TClientSurface, string> = {
+  "customer-web": `${config.customer_client_url}/reset-password`,
+  "seller-web": `${config.seller_client_url}/reset-password`,
+  "admin-web": `${config.admin_client_url}/reset-password`,
+};
 
 function isAdminRole(role: UserRoles): boolean {
   return role === UserRoles.ADMIN || role === UserRoles.SUPER_ADMIN;
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// REGISTER
-// ═══════════════════════════════════════════════════════════════════
+function registrationKey(role: TRegisterableRole, email: string): string {
+  return `auth:reg:${role}:${email}`;
+}
 
-const registerRequest = async (
-  payload: TRegisterRequest,
-  clientType: string | undefined,
-  ipAddress?: string,
-  userAgent?: string,
-): Promise<void> => {
-  const { email, password, role: bodyRoleStr, firstName, lastName } = payload;
+function registrationOtpKey(email: string): string {
+  return `auth:otp:${OtpPurpose.EMAIL_VERIFICATION}:${email}`;
+}
 
-  // Cross-validate body role vs header
-  const bodyRoleLower = bodyRoleStr.toLowerCase();
-  try {
-    deriveRequiredRole(bodyRoleLower, clientType);
-  } catch (err: any) {
-    // Log mismatch as potential tampering
-    if (err.field === "CLIENT_ROLE_MISMATCH") {
-      await prisma.auditLog.create({
-        data: {
-          actorId: "anonymous",
-          action: "ROLE_HEADER_BODY_MISMATCH",
-          targetId: "anonymous",
-          targetType: "Credential",
-          newValues: { bodyRole: bodyRoleLower, clientType } as any,
-          ipAddress: ipAddress ?? null,
-          userAgent: userAgent ?? null,
-          metadata: { context: "registerRequest" } as any,
-        },
-      });
-    }
-    throw err;
+// ─── Client surface guard (tamper detection) ───
+
+/**
+ * Each register/login route declares the surface it serves. A present-but-wrong
+ * `X-Client-Type` is treated as tampering and recorded in the audit log; a
+ * missing header is a plain 400.
+ */
+async function assertClientSurface(
+  expected: TClientSurface,
+  context: IRequestContext,
+): Promise<void> {
+  if (context.clientType === expected) {
+    return;
   }
 
-  // ADMIN/SUPER_ADMIN cannot self-register
-  const requiredRole = mapBodyRoleToUserRole(bodyRoleLower);
-  if (isAdminRole(requiredRole)) {
-    throw new BadRequestError("Invalid registration role");
-  }
-
-  const existingUser = await AuthRepository.findByEmail(email);
-  if (existingUser) {
-    throw new BadRequestError("Email already in use", "email");
-  }
-
-  await checkOtpRestrictions(email, OtpPurpose.EMAIL_VERIFICATION);
-  await trackOtpRequests(email, OtpPurpose.EMAIL_VERIFICATION);
-
-  const hashedPassword = await hashPassword(password, config.bcrypt_salt_round);
-
-  const otp = crypto.randomInt(100000, 999999).toString();
-
-  const registrationData: TRegisterRequest = {
-    email,
-    password: hashedPassword,
-    role: bodyRoleStr as "CUSTOMER" | "SELLER",
-    firstName,
-    lastName,
-  };
-
-  await redis.setex(
-    `auth:reg:${email}`,
-    35 * 60,
-    JSON.stringify(registrationData),
-  );
-  await redis.setex(
-    `auth:otp:${OtpPurpose.EMAIL_VERIFICATION}:${email}`,
-    5 * 60,
-    otp,
-  );
-
-  const aggregateId = uuidv5(email, DNS_NAMESPACE);
-
-  await prisma.$transaction(async (tx) => {
-    await emitDomainEvent(tx, {
-      eventType: AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
-      aggregateId,
-      payload: {
-        firstName,
-        email,
-        otp,
+  if (context.clientType) {
+    await AuditLogRepository.writeAuditLog(prisma, {
+      actorId: "anonymous",
+      action: "CLIENT_TYPE_MISMATCH",
+      targetId: "anonymous",
+      targetType: "Credential",
+      newValues: {
+        expectedSurface: expected,
+        clientType: context.clientType,
       },
+      metadata: { context: "clientSurfaceGuard" },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
     });
-  });
-};
-
-const verifyRegistration = async (
-  requestId: string,
-  payload: { email: string; otp: string; clientType?: string },
-): Promise<IAuthResult> => {
-  const { email, otp, clientType } = payload;
-
-  const cachedData = await redis.get(`auth:reg:${email}`);
-  if (!cachedData) {
-    throw new BadRequestError("Registration expired or not found");
   }
 
-  const { password, ...userData } = JSON.parse(cachedData);
+  throw new BadRequestError(
+    `This endpoint serves the ${expected} client only`,
+    "CLIENT_TYPE_MISMATCH",
+  );
+}
 
-  // Cross-validate role vs header
-  const bodyRoleLower = userData.role.toLowerCase();
-  deriveRequiredRole(bodyRoleLower, clientType);
+// ─── Credential verification + session issuance ───
 
-  // Reject admin roles
-  const requiredRole = mapBodyRoleToUserRole(bodyRoleLower);
-  if (isAdminRole(requiredRole)) {
-    throw new BadRequestError("Invalid registration role");
+async function verifyCredentials(
+  email: string,
+  password: string,
+): Promise<Credential> {
+  const credential = await CredentialRepository.findByEmail(email);
+
+  if (!credential) {
+    throw new UnauthorizedError("Invalid email or password");
   }
 
-  await verifyOtp(email, otp, OtpPurpose.EMAIL_VERIFICATION);
-
-  const credential = await prisma.credential.create({
-    data: {
-      email: userData.email,
-      password,
-      role: [userData.role],
-    },
-  });
-
-  const requestBody = {
-    id: credential.id,
-    ...userData,
-  };
-
-  const signature = createInternalSignature(
-    requestBody,
-    config.internal_service_secret,
+  const isPasswordValid = await isPasswordMatched(
+    password,
+    credential.password,
   );
 
-  try {
-    await createUserProfile(requestBody, signature, requestId);
-  } catch (error) {
-    await prisma.credential.delete({ where: { id: credential.id } });
-
-    logger.error(`[AuthService] Registration failed`, { requestId, error });
-    throw new InternalServerError(
-      "User registration failed. Please try again.",
-    );
+  if (!isPasswordValid) {
+    await handleFailedLogin(credential.id);
+    throw new UnauthorizedError("Invalid email or password");
   }
 
-  await redis
-    .del(`auth:reg:${email}`)
-    .catch((err: any) =>
-      logger.error(
-        `[redis] Failed to delete registration cache for ${email}`,
-        err,
-      ),
-    );
+  return credential;
+}
 
+async function issueSession(
+  credential: Credential,
+  activeRole: UserRoles,
+): Promise<IAuthResult> {
   const jwtPayload = buildJwtPayload({
-    ...credential,
-    activeRole: credential.role[0] ?? UserRoles.CUSTOMER,
+    id: credential.id,
+    email: credential.email,
+    role: credential.role,
+    activeRole,
   });
 
   const accessToken = issueAccessToken(jwtPayload);
@@ -266,158 +181,25 @@ const verifyRegistration = async (
     accessToken,
     refreshToken,
   };
-};
+}
 
-// ═══════════════════════════════════════════════════════════════════
-// RESEND OTP (generic, parameterized by purpose)
-// ═══════════════════════════════════════════════════════════════════
-
-const resendOtp = async (
-  email: string,
-  purpose: TOtpPurpose = OtpPurpose.EMAIL_VERIFICATION,
-): Promise<void> => {
-  // For EMAIL_VERIFICATION, check registration cache exists
-  if (purpose === OtpPurpose.EMAIL_VERIFICATION) {
-    const cachedData = await redis.get(`auth:reg:${email}`);
-    if (!cachedData) {
-      throw new BadRequestError("Registration expired or not found");
-    }
-  }
-
-  await checkOtpRestrictions(email, purpose);
-  await trackOtpRequests(email, purpose);
-
-  const otp = crypto.randomInt(100000, 999999).toString();
-  await redis.setex(`auth:otp:${purpose}:${email}`, 5 * 60, otp);
-
-  let firstName = "User";
-  if (purpose === OtpPurpose.EMAIL_VERIFICATION) {
-    const cachedData = await redis.get(`auth:reg:${email}`);
-    if (cachedData) {
-      const parsed = JSON.parse(cachedData);
-      firstName = parsed.firstName ?? "User";
-    }
-  }
-  const aggregateId = uuidv5(email, DNS_NAMESPACE);
-
-  await prisma.$transaction(async (tx) => {
-    await emitDomainEvent(tx, {
-      eventType: AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
-      aggregateId,
-      payload: {
-        firstName,
-        email,
-        otp,
-      },
-    });
-  });
-};
-
-// ═══════════════════════════════════════════════════════════════════
-// LOGIN (Cross-surface validation)
-// ═══════════════════════════════════════════════════════════════════
-
-const login = async (payload: {
-  email: string;
-  password: string;
-  role: "customer" | "seller" | "admin";
-  clientType: string | undefined;
-  ipAddress?: string;
-  userAgent?: string;
-}): Promise<IAuthResult> => {
-  const {
-    email,
-    password,
-    role: bodyRole,
-    clientType,
-    ipAddress,
-    userAgent,
-  } = payload;
-
-  // --- Step 1: Look up Credential by email ---
-  const credential = await AuthRepository.findByEmail(email);
-
-  // --- Step 2: Verify password against the stored hash ---
-  if (!credential) {
-    throw new UnauthorizedError("Invalid email or password");
-  }
-
-  const isPasswordValid = await isPasswordMatched(
-    password,
-    credential.password,
-  );
-  if (!isPasswordValid) {
-    await handleFailedLogin(credential.id);
-    throw new UnauthorizedError("Invalid email or password");
-  }
-
-  // --- Step 3: Cross-validate BOTH role signals before checking credential.roles ---
-  let requiredRole: UserRoles;
-  try {
-    requiredRole = deriveRequiredRole(bodyRole, clientType);
-  } catch (err: any) {
-    // Log mismatch as potential tampering (AuditLog)
-    if (err.field === "CLIENT_ROLE_MISMATCH") {
-      await prisma.auditLog.create({
-        data: {
-          actorId: "anonymous",
-          action: "ROLE_HEADER_BODY_MISMATCH",
-          targetId: "anonymous",
-          targetType: "Credential",
-          newValues: { bodyRole, clientType } as any,
-          ipAddress: ipAddress ?? null,
-          userAgent: userAgent ?? null,
-          metadata: { context: "login" } as any,
-        },
-      });
-    }
-    throw err;
-  }
-
-  // --- Step 4: Check credential.roles.includes(requiredRole) ---
-  const hasRequiredRole = credential.role.some(
-    (r) =>
-      r === requiredRole ||
-      (requiredRole === UserRoles.ADMIN &&
-        (r === UserRoles.ADMIN || r === UserRoles.SUPER_ADMIN)),
-  );
-
-  if (!hasRequiredRole) {
-    if (isAdminRole(requiredRole)) {
-      // ADMIN/SUPER_ADMIN: generic 403, log it to AuditLog
-      await prisma.auditLog.create({
-        data: {
-          actorId: credential.id,
-          action: "ADMIN_LOGIN_DENIED_NO_ROLE",
-          targetId: credential.id,
-          targetType: "Credential",
-          oldValues: { roles: credential.role } as any,
-          newValues: { requiredRole } as any,
-          ipAddress: ipAddress ?? null,
-          userAgent: userAgent ?? null,
-        },
-      });
-      throw new ForbiddenError("Access denied");
-    }
-
-    // CUSTOMER/SELLER: specific error since password was verified
-    const missingRoleStr =
-      requiredRole === UserRoles.CUSTOMER ? "CUSTOMER" : "SELLER";
-    const displayRole = missingRoleStr.toLowerCase();
-    throw new BadRequestError(
-      JSON.stringify({
-        code: "ROLE_NOT_PROVISIONED",
-        message: `No ${displayRole} account exists for this email.`,
-        canSelfProvision: true,
-        missingRole: missingRoleStr,
-      }),
-      "ROLE_NOT_PROVISIONED",
-    );
-  }
-
-  // --- Step 5: Lockout/active checks (existing logic) ---
+/**
+ * Account-state checks + token issuance, run only after a surface has confirmed
+ * both the password and the role it requires.
+ */
+async function completeLogin(
+  credential: Credential,
+  activeRole: UserRoles,
+): Promise<IAuthResult> {
   if (credential.isDeleted) {
-    throw new UnauthorizedError("Account is deleted");
+    const graceMs = 30 * 24 * 60 * 60 * 1000;
+    const deletedAt = credential.deletedAt;
+    const withinGrace =
+      !!deletedAt && Date.now() - deletedAt.getTime() < graceMs;
+    if (withinGrace) {
+      throw new UnauthorizedError("ACCOUNT_DELETED");
+    }
+    throw new UnauthorizedError("Invalid email or password");
   }
 
   if (credential.isBlocked) {
@@ -431,42 +213,219 @@ const login = async (payload: {
   }
 
   checkLockout(credential);
-
   await resetLoginAttempts(credential.id);
 
-  // --- Step 6: Issue tokens with activeRole = requiredRole, availableRoles = credential.role ---
-  const jwtPayload = buildJwtPayload({
-    id: credential.id,
-    email: credential.email,
-    role: credential.role,
-    activeRole: requiredRole,
+  return issueSession(credential, activeRole);
+}
+
+// ─── OTP-backed registration core (shared by customer/ and seller/) ───
+
+async function emitOtpEmail(
+  email: string,
+  firstName: string,
+  otp: string,
+): Promise<void> {
+  const aggregateId = uuidv5(email, DNS_NAMESPACE);
+
+  await prisma.$transaction(async (tx) => {
+    await emitDomainEvent(tx, {
+      eventType: AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
+      aggregateId,
+      payload: { firstName, email, otp },
+    });
+  });
+}
+
+/**
+ * Stage 1: validate the registration, cache it (hashed password) and email an
+ * OTP. The account is NOT created here — nothing exists until the OTP is proven.
+ */
+async function startRegistration(
+  input: IStartRegistrationInput,
+): Promise<void> {
+  const { role, email, password, firstName, profile } = input;
+
+  const existing = await CredentialRepository.findByEmail(email);
+  if (existing) {
+    throw new BadRequestError("Email already in use", "email");
+  }
+
+  await checkOtpRestrictions(email, OtpPurpose.EMAIL_VERIFICATION);
+  await trackOtpRequests(email, OtpPurpose.EMAIL_VERIFICATION);
+
+  const hashedPassword = await hashPassword(password, config.bcrypt_salt_round);
+  const otp = generateOtp();
+
+  const registration: ICachedRegistration = {
+    email,
+    password: hashedPassword,
+    firstName,
+    profile,
+  };
+
+  await redis.setex(
+    registrationKey(role, email),
+    REGISTRATION_TTL_SECONDS,
+    JSON.stringify(registration),
+  );
+  await redis.setex(registrationOtpKey(email), OTP_TTL_SECONDS, otp);
+
+  await emitOtpEmail(email, firstName, otp);
+}
+
+async function resendRegistrationOtp(
+  email: string,
+  role: TRegisterableRole,
+): Promise<void> {
+  const cached = await redis.get(registrationKey(role, email));
+  if (!cached) {
+    throw new BadRequestError("Registration expired or not found");
+  }
+
+  const registration = JSON.parse(cached) as ICachedRegistration;
+
+  await checkOtpRestrictions(email, OtpPurpose.EMAIL_VERIFICATION);
+  await trackOtpRequests(email, OtpPurpose.EMAIL_VERIFICATION);
+
+  const otp = generateOtp();
+  await redis.setex(registrationOtpKey(email), OTP_TTL_SECONDS, otp);
+
+  await emitOtpEmail(email, registration.firstName, otp);
+}
+
+/**
+ * Stage 2: verify the OTP, create the credential and provision the owner's
+ * profile in user-service (the source of truth for user state). A failed
+ * provisioning call rolls the credential back so no half-registered account can
+ * exist, then the client can retry the whole flow.
+ */
+async function completeRegistration(
+  input: ICompleteRegistrationInput,
+): Promise<IAuthResult> {
+  const { requestId, role, email, otp } = input;
+
+  const cached = await redis.get(registrationKey(role, email));
+  if (!cached) {
+    throw new BadRequestError("Registration expired or not found");
+  }
+
+  const registration = JSON.parse(cached) as ICachedRegistration;
+
+  await verifyOtp(email, otp, OtpPurpose.EMAIL_VERIFICATION);
+
+  const credential = await prisma.credential.create({
+    data: {
+      email: registration.email,
+      password: registration.password,
+      role: [role],
+    },
   });
 
-  const accessToken = issueAccessToken(jwtPayload);
-  const { token: refreshToken } = await issueRefreshToken(
-    jwtPayload,
-    credential.id,
+  try {
+    await createUserProfile(
+      {
+        id: credential.id,
+        email: credential.email,
+        role,
+        profile: registration.profile,
+      },
+      requestId,
+    );
+  } catch (error) {
+    await prisma.credential.delete({ where: { id: credential.id } });
+
+    logger.error("[AuthService] Registration failed — credential rolled back", {
+      requestId,
+      role,
+      error,
+    });
+
+    throw new InternalServerError(
+      "User registration failed. Please try again.",
+    );
+  }
+
+  await redis
+    .del(registrationKey(role, email))
+    .catch((err: unknown) =>
+      logger.error(
+        `[redis] Failed to delete registration cache for ${email}`,
+        err,
+      ),
+    );
+
+  return issueSession(credential, role);
+}
+
+// ─── Role replica sync (from user-service events) ───
+
+/**
+ * Adds a role to a credential after user-service confirmed the matching profile
+ * exists (e.g. customer → seller via `user.seller.profile.attached`).
+ *
+ * Idempotent by design — the consumer is at-least-once. Admin identities must
+ * never gain customer/seller roles, so that case is logged and dropped without
+ * retrying (a business-rule violation would loop forever otherwise).
+ */
+async function addRoleToCredential(
+  credentialId: string,
+  role: UserRoles,
+): Promise<void> {
+  const credential = await CredentialRepository.findById(credentialId);
+
+  if (!credential) {
+    logger.warn(
+      `[AuthService] Role sync for unknown credential ${credentialId} — nothing to update`,
+    );
+    return;
+  }
+
+  if (credential.role.includes(role)) {
+    return;
+  }
+
+  if (credential.role.some(isAdminRole)) {
+    logger.error(
+      `[AuthService] Refusing to add ${role} to admin credential ${credentialId}`,
+    );
+    return;
+  }
+
+  const updated = await CredentialRepository.addRoleIfUnchanged(
+    credentialId,
+    role,
+    credential.role,
   );
 
-  return {
-    id: credential.id,
-    email: credential.email,
-    role: credential.role,
-    accessToken,
-    refreshToken,
-  };
-};
+  if (!updated) {
+    // Concurrent role write — the event stays unacknowledged work at the broker
+    // level only if we throw, and redelivery would re-run this same check.
+    logger.warn(
+      `[AuthService] Role sync skipped for ${credentialId} — roles changed concurrently`,
+    );
+    return;
+  }
 
-// ═══════════════════════════════════════════════════════════════════
-// REFRESH TOKEN
-// ═══════════════════════════════════════════════════════════════════
+  await AuditLogRepository.writeAuditLog(prisma, {
+    actorId: "user-service",
+    action: "CREDENTIAL_ROLE_ADDED",
+    targetId: credentialId,
+    targetType: "Credential",
+    oldValues: { roles: credential.role },
+    newValues: { roles: [...credential.role, role] },
+  });
+
+  logger.info(`[AuthService] Credential ${credentialId} now holds ${role}`);
+}
+
+// ─── Refresh token / logout ───
 
 const refreshToken = async (token: string): Promise<ITokenRefreshResult> => {
   // 1. Verify signature/expiry first — an invalid signature or expired JWT
   //    rejects immediately, with no Redis call needed
   const decodedToken = verifyToken(
     token,
-    config.jwt.refresh_token_secret!,
+    config.jwt.refresh_token_secret,
     "refresh",
   );
 
@@ -527,27 +486,33 @@ const refreshToken = async (token: string): Promise<ITokenRefreshResult> => {
   };
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// LOGOUT
-// ═══════════════════════════════════════════════════════════════════
-
 const logout = async (token: string): Promise<void> => {
   await revokeRefreshToken(token);
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// PASSWORD RESET
-// ═══════════════════════════════════════════════════════════════════
+// ─── Password reset ───
+
+function resolveResetPage(clientType: string | undefined): string {
+  if (!clientType) {
+    return RESET_PAGE_BY_SURFACE["customer-web"];
+  }
+
+  const page = RESET_PAGE_BY_SURFACE[clientType as TClientSurface];
+  if (!page) {
+    throw new BadRequestError("Invalid or unrecognized X-Client-Type");
+  }
+
+  return page;
+}
 
 const requestPasswordReset = async (
   email: string,
-  clientType: string,
+  clientType: string | undefined,
 ): Promise<void> => {
-  const credential = await prisma.credential.findUnique({
-    where: { email },
-  });
+  const credential = await CredentialRepository.findByEmail(email);
 
   if (!credential) {
+    // Never reveal whether an account exists.
     return;
   }
 
@@ -558,38 +523,25 @@ const requestPasswordReset = async (
       email: credential.email,
       tokenType: "password_reset",
     },
-    config.jwt.reset_token_secret,
-    config.jwt.reset_token_expires_in,
+    config.jwt.password_reset_token_secret,
+    config.jwt.password_reset_token_expires_in,
   );
 
   await prisma.passwordReset.create({
     data: {
       credentialId: credential.id,
       resetToken,
-      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
     },
   });
 
-  let resetUiLink;
-
-  if (clientType === "customer-web") {
-    resetUiLink = `${config.customer_client_url}/reset-password?resetToken=${resetToken}`;
-  } else if (clientType === "seller-web") {
-    resetUiLink = `${config.seller_client_url}/reset-password?resetToken=${resetToken}`;
-  } else if (clientType === "admin-web") {
-    resetUiLink = `${config.admin_client_url}/reset-password?resetToken=${resetToken}`;
-  } else {
-    resetUiLink = `${config.customer_client_url}/reset-password?resetToken=${resetToken}`;
-  }
+  const resetUiLink = `${resolveResetPage(clientType)}?resetToken=${resetToken}`;
 
   await prisma.$transaction(async (tx) => {
     await emitDomainEvent(tx, {
       eventType: AuthDomainEventTypes.PASSWORD_RESET_REQUESTED,
       aggregateId: credential.id,
-      payload: {
-        email,
-        resetUiLink: resetUiLink as string,
-      },
+      payload: { email, resetUiLink },
     });
   });
 };
@@ -633,99 +585,79 @@ const verifyPasswordReset = async (payload: {
   ]);
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// SELF-SERVICE PROVISIONING (Task 2)
-// ═══════════════════════════════════════════════════════════════════
+const requestAccountRestore = async (email: string): Promise<void> => {
+  const credential = await CredentialRepository.findByEmail(email);
+  if (!credential || !credential.isDeleted) return;
 
-const provisionSeller = async (credentialId: string): Promise<void> => {
-  const credential = await AuthRepository.findById(credentialId);
-  if (!credential) {
-    throw new UnauthorizedError("Credential not found");
+  const graceMs = 30 * 24 * 60 * 60 * 1000;
+  if (
+    !credential.deletedAt ||
+    Date.now() - credential.deletedAt.getTime() > graceMs
+  ) {
+    return;
   }
 
-  // Hard rule: ADMIN/SUPER_ADMIN must never gain CUSTOMER/SELLER roles
-  if (credential.role.some((r) => isAdminRole(r))) {
-    throw new ForbiddenError(
-      "Admin identities cannot gain customer or seller roles",
-    );
-  }
+  const otp = generateOtp();
+  const hashed = crypto
+    .createHmac("sha256", config.internal_service_secret!)
+    .update(otp)
+    .digest("hex");
 
-  // User must have CUSTOMER role already
-  if (!credential.role.includes(UserRoles.CUSTOMER)) {
-    throw new ForbiddenError(
-      "Only existing customers can provision a seller account",
-    );
-  }
+  const key = `auth:restore:${credential.id}`;
+  await redis.set(key, hashed, "EX", 600);
 
-  // No duplicate provisioning
-  if (credential.role.includes(UserRoles.SELLER)) {
-    throw new ConflictError("Seller role already exists on this account");
-  }
-
-  // Emit async event — user-service will consume and create the profile
   await prisma.$transaction(async (tx) => {
     await emitDomainEvent(tx, {
-      eventType: AuthDomainEventTypes.SELLER_PROFILE_REQUESTED,
+      eventType: AuthDomainEventTypes.ACCOUNT_RESTORE_REQUESTED,
       aggregateId: credential.id,
-      payload: {
-        userId: credential.id,
-        requestedRole: "SELLER",
-      },
+      payload: { email, otp },
     });
   });
 };
 
-const provisionCustomer = async (credentialId: string): Promise<void> => {
-  const credential = await AuthRepository.findById(credentialId);
-  if (!credential) {
-    throw new UnauthorizedError("Credential not found");
+const verifyAccountRestore = async (
+  email: string,
+  otp: string,
+): Promise<void> => {
+  const credential = await CredentialRepository.findByEmail(email);
+  if (!credential || !credential.isDeleted) {
+    throw new BadRequestError("Invalid or expired restore request");
   }
 
-  // Hard rule: ADMIN/SUPER_ADMIN must never gain CUSTOMER/SELLER roles
-  if (credential.role.some((r) => isAdminRole(r))) {
-    throw new ForbiddenError(
-      "Admin identities cannot gain customer or seller roles",
-    );
+  const key = `auth:restore:${credential.id}`;
+  const stored = await redis.get(key);
+  if (!stored) {
+    throw new BadRequestError("Invalid or expired restore request");
   }
 
-  // User must have SELLER role already
-  if (!credential.role.includes(UserRoles.SELLER)) {
-    throw new ForbiddenError(
-      "Only existing sellers can provision a customer account",
-    );
+  const hashed = crypto
+    .createHmac("sha256", config.internal_service_secret!)
+    .update(otp)
+    .digest("hex");
+
+  const a = Buffer.from(hashed, "hex");
+  const b = Buffer.from(stored, "hex");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    throw new BadRequestError("Invalid OTP");
   }
 
-  // No duplicate provisioning
-  if (credential.role.includes(UserRoles.CUSTOMER)) {
-    throw new ConflictError("Customer role already exists on this account");
-  }
+  await redis.del(key);
 
-  // Emit async event
-  await prisma.$transaction(async (tx) => {
-    await emitDomainEvent(tx, {
-      eventType: AuthDomainEventTypes.CUSTOMER_PROFILE_REQUESTED,
-      aggregateId: credential.id,
-      payload: {
-        userId: credential.id,
-        requestedRole: "CUSTOMER",
-      },
-    });
-  });
+  await restoreUser(credential.id);
 };
-
-// ═══════════════════════════════════════════════════════════════════
-// EXPORTS
-// ═══════════════════════════════════════════════════════════════════
 
 export const AuthService = {
-  registerRequest,
-  verifyRegistration,
-  resendOtp,
-  login,
+  requestAccountRestore,
+  verifyAccountRestore,
+  assertClientSurface,
+  verifyCredentials,
+  completeLogin,
+  startRegistration,
+  resendRegistrationOtp,
+  completeRegistration,
+  addRoleToCredential,
   refreshToken,
   logout,
   requestPasswordReset,
   verifyPasswordReset,
-  provisionSeller,
-  provisionCustomer,
 };
