@@ -1,95 +1,85 @@
-# Nexus Commerce
+## Architecture Overview
 
-A production-ready, event-driven multi-vendor e-commerce platform built with a
-microservices architecture using Node.js, TypeScript, and modern cloud
-technologies.
-
-## Architecture
-
-This monorepo (Turborepo) contains all backend microservices and shared
-packages:
+Nexus is an event-driven multivendor e-commerce platform built as a Turborepo monorepo of Node/TypeScript microservices and three frontends.
 
 ### Services
 
-| Service                  | Description                                        | Tech                           |
-| ------------------------ | -------------------------------------------------- | ------------------------------ |
-| **API Gateway**          | Single entry point, request routing, rate limiting | Express 5, Redis               |
-| **Auth Service**         | Authentication, JWT, RBAC, password management     | Express 5, Prisma (PostgreSQL) |
-| **User Service**         | User profile CRUD, lifecycle management            | Express 5, Prisma (PostgreSQL) |
-| **Notification Service** | Email delivery (welcome, OTP, password reset)      | Express 5, Nodemailer, EJS     |
+| #   | Service              | Responsibility                                                   | Database                                          |
+| --- | -------------------- | ---------------------------------------------------------------- | ------------------------------------------------- |
+| 1   | api-gateway          | Routing, CORS, request aggregation, internal-secret injection    | None (stateless)                                  |
+| 2   | auth-service         | Login, JWT (access + rotating refresh), OTP, password reset      | Aiven Postgres `auth_db` + Redis (refresh tokens) |
+| 3   | user-service         | Profiles, roles, admin operations, central dead-letter dashboard | Aiven Postgres `user_db`                          |
+| 4   | notification-service | Email delivery (Resend), event consumer                          | Aiven Postgres `notification_db`                  |
+| 5   | shop-service         | Seller store profile, verification, store settings               | CockroachDB Serverless                            |
+| 6   | product-service      | Catalog and reviews                                              | MongoDB Atlas                                     |
+| 7   | order-service        | Orders, cart (Redis), inventory                                  | CockroachDB Serverless                            |
+| 8   | payment-service      | Payments, immutable ledger                                       | CockroachDB Serverless                            |
 
-### Shared Packages
+### Frontends
 
-| Package                      | Description                      |
-| ---------------------------- | -------------------------------- |
-| `packages/typescript-config` | Shared TypeScript configurations |
-| `packages/eslint-config`     | Shared ESLint configurations     |
-| `packages/shared-utils`      | Shared utility functions         |
-| `packages/ui`                | Shared React UI components       |
+| App              | Stack               | Audience                                 |
+| ---------------- | ------------------- | ---------------------------------------- |
+| customer-web     | Next.js (SSR-first) | Shoppers                                 |
+| seller-dashboard | React               | Sellers                                  |
+| admin-dashboard  | React               | Admins (users, dead letters, moderation) |
 
-## Prerequisites
+### Data Stores
 
-- Node.js 18+
-- pnpm 9+
-- Docker & Docker Compose (for containerized development)
+| Store                                         | Provider       | Used for                                     |
+| --------------------------------------------- | -------------- | -------------------------------------------- |
+| PostgreSQL (one instance, separate databases) | Aiven          | auth_db, user_db, notification_db            |
+| CockroachDB Serverless                        | Cockroach Labs | shop, order, payment                         |
+| MongoDB                                       | Atlas M0       | product catalog, reviews                     |
+| Redis                                         | Upstash        | Refresh tokens, rate limiting, cart, caching |
+| Kafka                                         | Aiven          | `domain-events`, `dead-letter-queue` topics  |
 
-## Getting Started
+### Key Patterns
 
-```bash
-# Install dependencies
-pnpm install
+- **Database per service**: no cross-service DB reads; API calls or Kafka events only.
+- **Transactional outbox**: every event is written in the same transaction as the business change, then published by a shared 5s interval poller (`packages/kafka`).
+- **Dead-letter handling**: failed events from any service flow to one `dead-letter-queue` topic and are stored centrally in user-service for admin review and manual redrive.
+- **Auth**: short-lived access JWT, refresh tokens stored hashed in Redis with rotation and reuse detection.
+- **Gateway trust**: downstream services accept requests only with the internal secret header.
 
-# Start all services in development mode
-pnpm dev
-
-# Or start a specific service
-pnpm dev --filter=auth-service
-```
-
-## Development
-
-Each service can be developed independently:
-
-```bash
-# Run a single service
-pnpm dev --filter=user-service
-
-# Build a single service
-pnpm build --filter=api-gateway
-
-# Lint all packages
-pnpm lint
-
-# Type-check all packages
-pnpm check-types
-```
-
-## Docker
-
-Build individual services using Turbo Prune:
-
-```bash
-turbo prune --scope=api-gateway --docker
-cd .out && docker build -t api-gateway .
-```
-
-## Project Structure
+### Repository Structure
 
 ```
 nexus-commerce/
-├── apps/                    # Frontend applications
-│   └── web/                 # Next.js web app
-├── packages/                # Shared packages
-│   ├── eslint-config/       # ESLint configurations
-│   ├── shared-utils/        # Utility functions
-│   ├── typescript-config/   # TypeScript configurations
-│   └── ui/                  # React component library
-├── services/                # Backend microservices
-│   ├── api-gateway/         # API Gateway
-│   ├── auth-service/        # Authentication service
-│   ├── notification-service/ # Notification service
-│   └── user-service/        # User profile service
-├── pnpm-workspace.yaml      # Workspace configuration
-├── turbo.json               # Turborepo configuration
-└── package.json             # Root package.json
+├── apps/
+│   ├── customer-web/
+│   ├── seller-dashboard/
+│   └── admin-dashboard/
+├── services/
+│   ├── api-gateway/
+│   ├── auth-service/
+│   ├── user-service/
+│   ├── notification-service/
+│   ├── shop-service/
+│   ├── product-service/
+│   ├── order-service/
+│   └── payment-service/
+├── packages/
+│   ├── kafka/            # EventBus, OutboxPoller, dead-letter helper
+│   ├── event-contracts/  # Event schemas, topic names
+│   ├── logger/
+│   ├── redis/
+│   ├── errors/
+│   ├── config/
+│   └── ui/               # shared shadcn/ui components
+├── docs/adr/             # architecture decision records
+├── AGENTS.md
+└── turbo.json
+```
+
+### Service Layout (convention)
+
+```
+src/
+├── config/        # plain env-derived settings
+├── lib/           # live clients (prisma, redis, kafka)
+├── repositories/  # entity-specific data access
+├── services/      # business logic
+├── events/        # eventBus, outbox wiring, consumers
+├── modules/       # routes, controllers, validation
+└── utils/         # generic helpers
 ```

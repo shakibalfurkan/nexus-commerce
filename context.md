@@ -1,112 +1,226 @@
 # Context
 
-## auth-service — Refresh token storage migration: Postgres → Redis (hashed)
+## user-service + auth-service cleanup & audit after the role-split refactor (completed 2026-10-07)
 
-### STEP 1 — Audit findings (completed 2026-09-06)
+Status: all six TODO.md parts done. No commits made (the working tree also
+carries the earlier role-split refactor as uncommitted WIP — reviewed, not
+touched beyond this task). No committed state changed except the edits below.
 
-**Every place the `RefreshToken` Prisma model is read / written / queried:**
+### Part 1 — role removal: VERIFIED clean (no leftovers)
 
-| Location | What it does |
-|---|---|
-| `services/auth-service/src/utils/token/issueToken.ts` → `issueRefreshToken(payload, credentialId, familyId?)` | Signs refresh JWT, **INSERTs plaintext token** row (`token`, `credentialId`, `familyId` = `familyId ?? crypto.randomUUID()`, `expiresAt = now + 7d` via local `REFRESH_TOKEN_EXPIRY_MS` constant). Called from `login()` and `verifyRegistration()` (both pass no `familyId` → new family per login) and from `refreshToken()` (passes existing `familyId` → rotation). |
-| `services/auth-service/src/modules/auth/auth.service.ts` → `refreshToken(token)` (line ~464) | **Plaintext lookup** `prisma.refreshToken.findUnique({ where: { token }, include: { credential: true } })` ← **the security gap**. Then: `!storedToken` → 401; `isRevoked` → `revokeTokenFamily(familyId)` + `logger.warn("[RTR] Token reuse detected — revoked family …")` + 401; `expiresAt < now` → `revokeRefreshToken(token)` + 401; then `verifyToken(token, refresh_token_secret, "refresh")`; takes `activeRole` from decoded JWT; revokes old token; issues new access+refresh pair under **same** `familyId`. Returns `{ accessToken, refreshToken, role: credential.role }`. |
-| `services/auth-service/src/modules/auth/auth.service.ts` → `logout(token)` | Calls `revokeRefreshToken(token)` (plaintext `updateMany` → `isRevoked: true`). |
-| `services/auth-service/src/utils/token/revokeToken.ts` | `revokeTokenFamily(familyId)` and `revokeRefreshToken(token)` — both Prisma `updateMany`/`update` marking `isRevoked`. Only consumer is `auth.service.ts`. |
-| `services/auth-service/src/modules/auth/auth.repository.ts` → `findRefreshToken`, `revokeRefreshToken`, `revokeTokenFamily` | **Dead code** — `AuthRepository.*` is only ever used for `findByEmail`/`findById`. The refresh-token functions here have zero call sites (service uses `utils/token/revokeToken.ts` instead). |
-| `prisma/schema.prisma` | `RefreshToken` model (`@@map("refresh_tokens")`: id, token plaintext unique, credentialId, familyId default uuid, expiresAt, isRevoked, createdAt) + `Credential.refreshTokens` relation (only exists for this table). |
+- Wire payload sent by `auth-service/lib/axiosClients/userServiceClient.ts` is
+  `{ id, email, profile }` only — no `role` key (line 187-191). The remaining
+  `CreateUserProfileInput.role: TProvisionableRole` is the client-side ENDPOINT
+  SELECTOR (`PROFILE_ENDPOINTS[input.role]`, plus log fields) — read, never
+  serialized, never validated by user-service. Removing it would need three
+  per-role client functions (forbidden new abstraction), so it stays.
+- user-service provisioning schemas (customer, seller, admin) contain no `role`
+  field; no `z.literal(role)` anywhere in user-service; no `req.body.role` read.
+- Role for each provisioning call comes from the route module's own service as a
+  constant (`customer`: `UserRoles.CUSTOMER`, `seller`: `UserRoles.SELLER`,
+  `admin`: `UserRoles.ADMIN`) — never from the request. auth-service:
+  `customer`/`seller` services pass `UserRoles.CUSTOMER`/`SELLER` through
+  `completeRegistration`; `admin` service passes `UserRoles.ADMIN`.
+- tests/docs/ADRs: ADR 0002 mentions `payload.role` only as history of the old
+  problem (Context section) — correct, not stale. No test suites exist.
 
-- **No session-listing feature exists** — no other reads of `refreshTokens`.
-- Tests: `package.json` has no test script (`"test": "echo Error: no test specified"`). Verification will be `tsc` build + manual flow checks.
+### Part 2 — dead-letter consolidation: DONE
 
-**Exact refresh JWT payload shape (confirmed from code):**
+`modules/dead-letter-event/` owns everything:
 
-Signed by `generateToken()` (`HS256`) with `config.jwt.refresh_token_secret`, `expiresIn: config.jwt.refresh_token_expires_in` (default `"7d"`):
-
-```json
-{ "id": "<credentialId>", "email": "...", "role": ["CUSTOMER", ...], "activeRole": "CUSTOMER", "tokenType": "refresh", "iat": ..., "exp": ... }
+```
+deadLetter.route.ts            — router, router-level auth(ADMIN, SUPER_ADMIN),
+                               relative paths only: GET "/" and POST "/:id/redrive"
+deadLetter.controller.ts
+deadLetter.validation.ts
+deadLetterEvent.repository.ts
+deadLetterConsumer.ts
+startDeadLetterConsumer.ts
 ```
 
-- `credentialId` **IS recoverable by decoding** — it is the `id` claim.
-- `familyId` is **NOT in the payload** — it lives only in the DB row. The TODO's assumption ("payload must already carry enough to reconstruct credentialId/familyId") is **half true**: `familyId` must be added as a JWT claim at issue time so rotation can decode `credentialId + familyId` without any store lookup. `familyId` is a random UUID, not secret — safe to embed in a signed JWT.
-- `activeRole` is read from the old token during refresh (`decodedToken.activeRole`) and re-embedded into the new pair — rotation currently keeps the role from the presented token.
+- Deleted: `modules/admin/adminDeadLetter.controller.ts`,
+  `modules/admin/adminDeadLetter.validation.ts` (identical duplicates).
+- `admin.route.ts`: dead-letter routes + imports removed; module keeps only
+  `POST /profile` (HMAC). Zero dead-letter references remain.
+- `routes/index.ts`: mounted `DeadLetterRoutes` at `/admins/dead-letters`
+  BEFORE the `/admins` entry (order documented in a comment).
+- `AdminRoutes` carries no router-level middleware (verified: no `router.use`
+  in the file) — nothing else can run for dead-letter requests.
+- Public URLs unchanged and probed live: `GET /admins/dead-letters` → 401
+  without token; `POST /admins/dead-letters/:id/redrive` → 401; old
+  `/admin/dead-letters` (singular) → 404. No aliases added.
 
-**Migration-relevant notes:**
-- Redis client: shared `@nexus/redis` (ioredis wrapper) instantiated in `src/lib/redis.ts` as `redis`. Existing auth Redis usage follows `<service>:<purpose>:<id>` + TTL convention (`auth:otp:…`, `auth:reg:…`), so `auth:refresh:<credentialId>:<familyId>` fits.
-- Current flow has no concurrency control (find → update → create non-atomic); TODO Step 4 requires Lua/MULTI for compare-then-overwrite during rotation.
-- Deploy note: switching storage invalidates all existing refresh tokens (they live only in Postgres); users will be logged out unless a backfill is done. Accepted as part of this migration.
-- Step 5 involves `DROP TABLE refresh_tokens` — destructive op, requires explicit approval + rollback plan per AGENTS.md.
+### Part 3 — become-seller consolidation: DONE
 
-**Decisions made:**
-- Add `familyId` claim to the refresh JWT payload at issue time (required for key design `auth:refresh:<credentialId>:<familyId>`).
-- New repo: `src/repositories/refreshToken.ts` (matches existing `repositories/credential.ts` pattern; uses `lib/redis.js` instance like other modules — consistent with current codebase style).
-- `issueToken.ts` keeps only `issueAccessToken`; `utils/token/revokeToken.ts` is deleted (its logic moves into the new repo); dead Prisma refresh functions removed from `modules/auth/auth.repository.ts`.
-- TTL semantics: refresh expiry is 7d from issue (sliding on rotation), matching current `expiresAt = now + 7d` per issuance.
+Feature now lives entirely in `modules/customer` (route → controller →
+validation → service): `POST /customers/me/become-seller` +
+`auth(UserRoles.CUSTOMER)` route, `CustomerProfileController.becomeSeller`,
+`becomeSellerSchema` (built from shared `profileFields` primitives — no
+duplication, nothing imported from the seller module), `BecomeSellerInput`
+type, and the `becomeSeller` service function, exported via
+`CustomerProfileService`.
 
----
+- Moved from `modules/seller`: `becomeSeller` + `BecomeSellerInput` +
+  `ADMIN_ROLES`/`isAdminRole` (used only by this flow). Checks in identical
+  order (user exists → admin identities rejected → seller conflict), identical
+  transaction contents (create seller profile, add SELLER role, audit log,
+  outbox event `user.seller.profile.attached` payload `{userId, email}`),
+  same cache invalidation, same response/message.
+- Database access already shared — no move needed: `UserRepository`
+  (`findUserById/createSellerProfile/addRole/writeAuditLog/invalidateUserCache`
+  in the shared `modules/user` module), `prisma.$transaction`, `emitDomainEvent`.
+- `modules/seller` keeps only seller-profile provisioning (`POST
+  /sellers/profile`); no re-exports, no forwarding functions. Grep-confirmed:
+  `modules/customer` has no imports from `modules/seller` and vice versa.
 
-### STEP 2 — Redis key design (completed 2026-09-06)
+### Part 4 — auth-service auditLog writer: VERIFIED, one import-style fix
 
-- Key: `auth:refresh:<credentialId>:<familyId>` — fits `<service>:<purpose>:<id>` convention (matches existing `auth:otp:…` / `auth:reg:…` patterns)
-- Value: JSON `{ tokenHash: sha256(currentToken), createdAt: ISO }` — no `isRevoked` field; a hash mismatch on lookup IS the reuse signal
-- TTL: `7 * 24 * 60 * 60` seconds (7d from issue, sliding on rotation — matches old `expiresAt = now + 7d` per issuance); Redis expires keys natively, no cleanup job
-- Concurrency: rotation uses a Lua script (compare-hash-then-overwrite) so two concurrent refreshes on one family cannot both win; the loser is treated as reuse. (Note: unlike the rate limiter, refresh must fail CLOSED on Redis errors — without the store we cannot verify rotation/reuse, so errors propagate as 500.)
+- `src/repositories/auditLog.ts` confirmed (not under modules/), function
+  `writeAuditLog` + type `AuditLogInput` already renamed (no
+  `writeAuthAuditLog`/`AuthAuditLogInput`/`modules/auth/auditLog` references
+  remain in src; only gitignored `dist/` had stale copies).
+- Mismatch found and fixed (pure import fix): both call sites used a named
+  import while `credential.ts`/`adminInvite.ts` use namespace imports.
+  Converted `auth.service.ts` + `admin.service.ts` to
+  `import * as AuditLogRepository` with `AuditLogRepository.writeAuditLog(...)`
+  calls — mirrors `UserRepository.writeAuditLog`.
+- All three callers inside `prisma.$transaction` pass `tx` (admin service:
+  invite-created/consumed/rolled-back). Callers outside transactions pass the
+  global `prisma` (client-surface guard, admin-login-denied, role sync) — correct.
+- Written fields byte-identical to the pre-move writer (actorId, action,
+  targetId, targetType, ipAddress, userAgent, oldValues, newValues, metadata).
 
-### STEP 3 — New Redis-backed repository (completed 2026-09-06)
+### Part 5 — audit (knip + strict tsc + reads). Findings table
 
-New file `src/repositories/refreshToken.ts` (matches existing `repositories/credential.ts` pattern, uses the `lib/redis.js` ioredis instance like the rest of the module):
+| # | File | Issue | Cat | Action | Risk |
+|---|------|-------|-----|--------|------|
+| 1 | user `adminDeadLetter.*` + admin routes | duplicate dead-letter HTTP layer | f | deleted + routes stripped (Part 2) | none — consolidation |
+| 2 | user `modules/customer` vs `modules/seller` | one feature split across two role modules | f | moved into customer (Part 3) | none — verbatim move |
+| 3 | auth `auditLog` import style | named import vs namespace convention | d | converted to `* as AuditLogRepository` (Part 4) | none |
+| 4 | user `middlewares/bodyParser.ts` | `parseBody` never mounted; legacy `data`-key unwrap | b | deleted file | none |
+| 5 | user `middlewares/idempotency.ts` | `idempotencyMiddleware` never mounted ("Sprint 4" never happened) | b | deleted file; removed now-dead `idempotencyKey` from `global.d.ts` | none |
+| 6 | user `middlewares/rateLimiter.ts` | never imported (user-service has no public auth endpoints) | b | deleted file | none — note: AGENTS fail-open rate-limit rule was also violated here anyway (no fallback would matter since unused) |
+| 7 | user `cacheKeys.userExistsKey/userListKey` | zero call sites | b | deleted | none |
+| 8 | user `cacheManager.cacheInvalidateMany/clearL1Cache/getRedisCircuitState` | zero call sites | b | deleted | none |
+| 9 | user `UserRepository.existsById/listUsers` + `ListUsersFilters` | unused repository functions, no route ever existed | b | deleted function + interface | none |
+| 10 | auth `repositories/credential.ts` ×5 (`findByEmailExcludingDeleted`, `createCredential`, `increment/resetFailedLoginAttempts`, `lockAccount`) | unused exports; login flow uses `utils/handleLogin.ts` instead | b+c | deleted the five | none — `checkLockout/handleFailedLogin/resetLoginAttempts` in `handleLogin` are the live implementations |
+| 11 | auth `constant/index.ts` | empty (1 byte), no importers | b | deleted file | none |
+| 12 | auth `events/outboxWriter.ts` | re-export shim, zero importers (pollers import `@nexus/kafka` directly) | b+f | deleted file | none |
+| 13 | user `types/express.d.ts` | duplicate `Express.Request` augmentation — `global.d.ts` declares identical `user` + `requestId` | c | deleted file; tsc clean without it | none |
+| 14 | auth `lib/kafka.ts` `KafkaTopics` re-export | nothing imports it from there (consumers use `@nexus/event-contracts`) | b+f | dropped from re-export + its import | none |
+| 15 | auth `userServiceClient`: `internalHeaders` export, `default` export; auth `auth.validation` 7 primitives; `notFoundHandler` named exports (user/auth/gateway) | exported but only used in-file / via aggregate objects (`AuthValidation`, `*Service` objects); services export functions twice (bare + object) | b | removed redundant `export` keywords (kept objects/defaults); auth.service-style convention already does plain-fns + object | none |
+| 16 | gateway `circuitBreaker.getState/reset` | zero call sites | b | deleted both | none |
+| 17 | gateway `circuitBreaker.recordSuccess/recordFailure/isOpen` | internal-only | b | un-exported (still used by the middleware) | none |
+| 18 | `seller.validation.ts` `UserRoles` import; auth `lib/redis.ts` `InternalServerError`; gateway `config` `optionalEnv` | unused imports (strict-tsc leads) | b | removed | none |
+| 19 | user `pagination/encodeCursor` | used only inside `cursorPagination.ts` | b | un-exported | none |
+| 20 | user-service package.json: `axios`, `uuid`, `@types/uuid`, `pg`, `@types/pg`; auth-service: `pg`, `@types/pg` | zero imports in src (grep-verified); `uuid` only used the deleted middleware | b | REVERTED, not applied: lockfile sync requires a working `pnpm install`, and this environment's root pnpm 9 refuses the pnpm-10.25.0-built `node_modules` (interactive wipe prompt) while the network is too slow to reinstall; leaving manifests + lockfile untouched is the smaller risk. Zero functional impact either way (nothing imports them). Remove in a connected session | none |
+| 21 | user `.env.example`: `BCRYPT_SALT_ROUND`, `*_EXPIRES_IN`, `JWT_RESET_TOKEN_*`, `USER_SERVICE_URL` | not read by config; missing required `KAFKA_*` + `SERVICE_NAME` | e | rewrote example to match `config/index.ts` + `lib/prisma.ts` exactly | none — docs only |
+| 22 | auth `auth.validations/loginValidationSchema` etc. | knip-unique-export noise, but all consumed via `AuthValidation.*`; module doc intends the primitives as API | — | left, documented | none |
+| 23 | auth `handleLogin.ts` direct `prisma.credential.update` in utils (data access outside `src/repositories`) | d | left: pre-existing pattern (auth service also writes credentials inline); moving live login-lockout logic is churn beyond cleanup | none |
 
-- `issueRefreshToken(payload, credentialId, familyId?)` — signs the JWT **with a new `familyId` claim embedded** (payload-shape fix from audit), `SET key value EX 7d` (new familyId = new login; same familyId = rotation)
-- `findActiveTokenHash(credentialId, familyId)` — `GET` + parse, returns `tokenHash` or `null` (missing key = expired past TTL or already revoked; corrupt JSON logged + treated as null)
-- `rotateRefreshToken(credentialId, familyId, expectedTokenHash, payload)` — Lua `EVAL` atomic compare-hash-then-overwrite; returns new token or `null` when the family was already rotated/expired (reuse signal)
-- `revokeTokenFamily(credentialId, familyId)` — `DEL` the single family key (whole family shares one key holding only the current token)
-- `revokeRefreshToken(token)` — decodes the JWT (`jwt.decode`, no throw on garbage) and `DEL`s the key; keeps the logout call site unchanged
-- `hashRefreshToken(token)` — exported sha256 helper so the service flow and the repo share one hashing implementation
+### Chose NOT to change (needs approval — contract/behavior boundary)
 
-`ITokenPayload` (`utils/token/generateToken.ts`) extended with optional `activeRole` + `familyId` claims (only the refresh token embeds `familyId`; access tokens unchanged).
+- `seller.profile.requested` / `customer.profile.requested` event contracts
+  (`packages/event-contracts`): no producer remains (auth-service's old
+  `provisionSeller`/`provisionCustomer` were removed in the refactor);
+  notification-service still accepts them and kafka tests still route them.
+  Event-contract change → recommend removal (schemas, notification acceptance,
+  test refs, ADR §4 sentence) after confirming no in-flight messages. NOT
+  CHANGED.
+- `user.registered` event payload `role`: produced by `provisionAccount`, read
+  by no consumer (notification uses email/firstName only). Event contract →
+  left. Recommend: keep (cheap, may serve future consumers) or drop in a
+  contract revision.
+- `requestedRole: z.literal(...)` on those dead events: same mistake class as the
+  original (value fully determined by `eventType`) — but inside protected
+  event contracts → left, remove together with the schemas above.
+- `addRoleToCredential` (role sync): `updateMany` guard + audit write are not
+  wrapped in one transaction — a failed audit after a successful role add is
+  permanently skipped on redelivery (early-return on `role.includes`). Recommend
+  `prisma.$transaction` around both. NOT CHANGED (runtime behavior).
+- **`GET /users/:id`, `GET /users/email/:email`, `DELETE /users/:id[/hard]`,
+  `POST /users/:id/restore` have NO auth middleware** (verified in
+  `user.route.ts`); controllers fall back to `actorId = "system"`. The
+  api-gateway proxies `/user-service/users/*` without a user-session check
+  (`internalOnly` blocks only the three `/profile` paths). So user
+  read/delete/restore and the audit actor attribution are effectively public.
+  Pre-existing, not introduced by the refactor; AGENTS.js requires
+  authenticated → authorized → ownership-checked on every protected endpoint.
+  Recommend `auth(...)` (+ ownership) or deny-listing these paths at the
+  gateway. NOT CHANGED (auth behavior).
+- Package/notification knip findings (`@prisma/client`, `pg`, `react-dom`,
+  notification-service exports/types, `next` unresolved import, `dotenv`
+  unlisted in `prisma.config.ts`): out of Part-5 scope (other packages) or
+  false positives — left.
+- `TProvisionableRole`, DTO types (`*DTO`), `ITokenPayload`/`IDecodedToken`,
+  `TInviteValidationStatus`: knip-flagged but referenced by exported function/
+  type signatures under `declaration: true` — un-exporting breaks declaration
+  emit. Left.
 
-### STEP 4 — Rewritten refreshToken() flow (completed 2026-09-06)
+### Part 6 — verify
 
-`AuthService.refreshToken(token)` in `modules/auth/auth.service.ts` now:
+- `tsc --noEmit` clean: user-service, auth-service, api-gateway (exit 0 each).
+- `tsc --noEmit --noUnusedLocals --noUnusedParameters`: clean in all three
+  (the 4 baseline violations above are gone).
+- `pnpm run check-types`: 10/10 tasks pass.
+- `pnpm run build`: 13/13 tasks pass (baseline also 13/13 — no regression).
+- Route probes over real HTTP against `createApp()` (dummy envs, no DB/Redis):
 
-1. `verifyToken(token, refresh_token_secret, "refresh")` FIRST — invalid signature / expired JWT rejects immediately with no Redis call (old DB expiry branch is gone; Redis TTL replaces `expiresAt` checks)
-2. Decodes `credentialId` (= `id` claim) + `familyId` (+ `activeRole`) from the verified payload; missing `familyId`/`activeRole` → rejected as invalid (also covers pre-migration tokens signed without the claim)
-3. `findActiveTokenHash(credentialId, familyId)` — `null` → `401 "Invalid refresh token"` (expired past TTL or already revoked)
-4. `hashRefreshToken(token) !== storedTokenHash` → **reuse**: `revokeTokenFamily(credentialId, familyId)` (DELETE key) + the preserved `[RTR] Token reuse detected — revoked family … for credential …` warning + `UnauthorizedError("Refresh token has been revoked")`
-5. MATCH → `rotateRefreshToken(...)` Lua compare-hash-then-overwrite under the SAME familyId; a `null` (lost a concurrent race) is treated as reuse with the same revoke + warning path; issues new access token from claims (`activeRole` carried from the presented token, as before) and returns the rotated refresh token
+```
+user-service route table (before → after: IDENTICAL, `diff` empty)
+GET /                          → 404   (welcome lives at root "/" → see below)
+GET /api/v1/health             → 404   (health lives at root "/health")
+GET /api/v1/users/email/:email → 503   (offline: no DB)
+GET /api/v1/users/:id          → 503   (offline: no DB)
+DELETE /api/v1/users/:id       → 503   (offline: no DB)
+DELETE /api/v1/users/:id/hard  → 503   (offline: no DB)
+POST /api/v1/users/:id/restore → 503   (offline: no DB)
+POST /api/v1/customers/profile → 401   (HMAC guard runs)
+POST /api/v1/customers/me/become-seller → 401  (auth guard runs)
+POST /api/v1/sellers/profile   → 401   (HMAC guard runs)
+POST /api/v1/admins/profile    → 401   (HMAC guard runs)
+GET /api/v1/admins/dead-letters → 401  (router auth runs; via DeadLetterRoutes now)
+POST /api/v1/admins/dead-letters/:id/redrive → 401
+GET /api/v1/admin/dead-letters (old)   → 404
+POST /api/v1/admin/dead-letters/:id/redrive (old) → 404
+POST /api/v1/users/create-profile (old) → 404
+GET /api/v1/admins | /customers | /sellers → 404 (prefixes have no root route)
+GET /         → 200   (welcome)
+GET /health   → 200
+```
 
-Call-site cleanup in the same change:
-- `utils/token/issueToken.ts` — now only `issueAccessToken` (Prisma write + `issueRefreshToken` removed; `REFRESH_TOKEN_EXPIRY_MS` moved into the repo as `REFRESH_TOKEN_TTL_SECONDS`)
-- `utils/token/revokeToken.ts` — deleted (Prisma revocation logic replaced by the repo)
-- `modules/auth/auth.repository.ts` — dead Prisma refresh functions (`findRefreshToken`, `revokeRefreshToken`, `revokeTokenFamily`) removed; `logout()` call site unchanged (repo's `revokeRefreshToken(token)` handles decode + DEL)
-- `tsc` build verified passing
+auth-service route table (probed, live Redis from its `.env`):
 
-Note: old behavior of `logout` on a garbage token was a Prisma P2025 throw; now it is a silent no-op (nothing to delete) — strictly better for a logout endpoint.
+```
+GET /            → 200
+GET /health      → 200
+POST /api/v1/auth/refresh-token              → 401 (garbage token)
+POST /api/v1/auth/register-request (old)     → 404
+POST /api/v1/auth/login (old)                → 404
+POST /api/v1/customers/register|/login       → 400 (validation runs)
+POST /api/v1/sellers/register|/login         → 400
+POST /api/v1/admins/login                    → 400
+GET  /api/v1/admins/invites/:token           → 400
+POST /api/v1/admins/invites                  → 401 (SUPER_ADMIN guard runs)
+```
 
-### STEP 5 — Postgres artifacts removed (completed 2026-09-06)
+- Grep: `modules/customer` has no imports from `modules/seller` and
+  `modules/seller` has none from `modules/customer` (exit 1, clean).
+- Same grep across auth-service role modules (customer/seller/admin): clean —
+  they only import the shared `../auth/*` module.
+- Rebuilt `dist/` for user-service + auth-service to purge stale artifacts
+  (old `adminDeadLetter.*`, `writeAuthAuditLog`, removed repositories).
+- Probe scripts were temporary (repo root, deleted).
 
-- Removed `RefreshToken` model (`@@map("refresh_tokens")`) from `prisma/schema.prisma`
-- Removed the `Credential.refreshTokens` relation (it only existed for this table; `passwordResets` relation kept)
-- Migration `20260906020804_remove_refresh_token_model` generated and **applied** to the Aiven Postgres `auth_db` (explicit user approval given; rollback plan: `git revert` + re-apply the original `20260119132125_refresh_token` DDL — the table held only revocable session state now owned by Redis)
-- Verified: `pg_tables` now lists `_prisma_migrations, audit_logs, credentials, idempotency_records, outbox_events, password_resets` — `refresh_tokens` gone
-- `prisma generate` re-run; generated client contains zero `RefreshToken` references; `tsc` build passing
+### Env/tooling notes
 
-### STEP 6 — Verification (completed 2026-09-06)
-
-- `pnpm build` (tsc, strict) passes after every change
-- No test suite exists in auth-service (`test` script is a placeholder), so a runtime E2E script (tsx, not committed) was run against the **live Upstash Redis** exercising the actual repo functions — **all 14 checks passed**:
-  - issue → key `auth:refresh:<credentialId>:<familyId>` with TTL exactly 604800s, value hashed JSON (no plaintext JWT in Redis), `tokenHash === sha256(token)`
-  - JWT decodes `credentialId` + `familyId`; rotation under SAME familyId persists across rotations; rotated token differs but carries same familyId
-  - presenting the OLD rotated token → hash mismatch → family key deleted (reuse detection)
-  - concurrent rotations leave consistent state — NOTE: same-second rotations produce byte-identical JWTs (`iat` is second-resolution) so the CAS may accept both writes of the *identical* value (benign, state stays consistent); with distinct values exactly one CAS wins (verified deterministically)
-  - expired/unknown family → `findActiveTokenHash` null → clean reject; logout → `revokeRefreshToken` deletes the family key
-- DB verified: `refresh_tokens` table dropped from Aiven Postgres; generated Prisma client has zero RefreshToken references
-- Residual: full HTTP E2E through Express/Kafka startup not exercised (no local broker); flow logic itself verified end-to-end at the service/repository layer
-
-### STEP 7 — Commits (completed 2026-09-06)
-
-Pre-existing uncommitted WIP from earlier sessions was committed first in service-scoped chunks (chore(auth) deps, refactor(gateway) redis lib, refactor(auth) redis lib, fix(notification) template, docs) to keep history clean, then this task in logical chunks:
-1. `docs(auth): add refresh-token Postgres-to-Redis migration audit report`
-2. `feat(auth): add Redis-backed refresh token repository with hashed storage`
-3. `feat(auth): rewrite refreshToken flow with hashed comparison and atomic Lua rotation`
-4. `refactor(auth): remove RefreshToken Postgres model, drop refresh_tokens table`
-5. `docs(auth): record refresh-token migration verification results` (final)
+- user-service has no `.env`; probes used dummy envs. Root `packageManager` says pnpm@9.0.0 but every 
+  service declares `pnpm@10.25.0` and `node_modules/.modules.yaml` is 10.25.0. Running `pnpm install` 
+  from root (pnpm 9) ALWAYS prompts to wipe and reinstall `node_modules` from scratch (pre-existing, 
+  independent of this task) - use corepack pnpm@10.25.0 for installs, and consider aligning root 
+  `packageManager` to 10.25.0. A pnpm 10.25.0 lockfile rewrite also reformats the kafkajs `patch_hash` 
+  entry; that rewrite was reverted to keep this task's diff free of toolchain churn.
+- `npx knip` panics on Prisma config files (`dotenv/config` unresolvable from
+  root) — knip environment artifact; output otherwise used as leads only.
+- Lockfile diff includes a kafkajs `patch_hash` format rewrite (patch applied
+  identically) — produced by pnpm 10.25.0 (the version that built the tree).
