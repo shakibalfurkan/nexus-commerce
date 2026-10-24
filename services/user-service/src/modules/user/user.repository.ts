@@ -1,22 +1,14 @@
 import { randomUUID } from "crypto";
 
 import { prisma } from "../../lib/prisma.js";
-import type {
-  PrismaTransaction,
-  CursorPaginationResult,
-} from "../../types/database.types.js";
+import type { PrismaTransaction } from "../../types/database.types.js";
 import {
   toUserResponseDTO,
+  type CreateUserRecordInput,
   type UserResponseDTO,
-  type CreateUserProfileDTO,
 } from "./user.dto.js";
 import { cacheGet, cacheInvalidate } from "../../cache/cacheManager.js";
 import { userProfileKey, userEmailKey, TTL } from "../../cache/cacheKeys.js";
-import {
-  decodeCursor,
-  buildCursorWhere,
-  paginateResult,
-} from "../../pagination/cursorPagination.js";
 import { UserRoles } from "../../generated/prisma/enums.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 
@@ -37,7 +29,7 @@ const activeUserFilter = { isDeleted: false };
 // ─── Public Repository API ───
 
 export async function createUser(
-  data: CreateUserProfileDTO,
+  data: CreateUserRecordInput,
   tx?: PrismaTransaction,
 ): Promise<UserResponseDTO> {
   const client = tx ?? prisma;
@@ -46,7 +38,7 @@ export async function createUser(
     data: {
       id: data.id,
       email: data.email,
-      role: data.role,
+      role: [data.role],
     },
     include: userProfileIncludes,
   });
@@ -54,27 +46,28 @@ export async function createUser(
   return toUserResponseDTO(user);
 }
 
-export async function createUserWithEncryption(
-  data: CreateUserProfileDTO & {
-    encryptedEmail: string;
-    emailBlindIndex: string;
-  },
+/** Role attach on an existing account (customer → seller and similar). */
+export async function addRole(
+  id: string,
+  role: UserRoles,
   tx?: PrismaTransaction,
-): Promise<UserResponseDTO> {
+): Promise<void> {
   const client = tx ?? prisma;
 
-  const user = await client.user.create({
-    data: {
-      id: data.id,
-      email: data.email,
-      encryptedEmail: data.encryptedEmail,
-      emailBlindIndex: data.emailBlindIndex,
-      role: data.role,
-    },
+  await client.user.update({
+    where: { id },
+    data: { role: { push: role } },
+  });
+}
+
+export async function findUserByIdIncludingDeleted(
+  id: string,
+): Promise<UserResponseDTO | null> {
+  const user = await prisma.user.findUnique({
+    where: { id },
     include: userProfileIncludes,
   });
-
-  return toUserResponseDTO(user);
+  return user ? toUserResponseDTO(user) : null;
 }
 
 export async function findUserById(
@@ -130,22 +123,20 @@ export async function existsByEmailIncludingDeleted(
   return count > 0;
 }
 
-export async function existsById(id: string): Promise<boolean> {
-  const count = await prisma.user.count({
-    where: {
-      id,
-      ...activeUserFilter,
-    },
-  });
-  return count > 0;
-}
+export async function softDeleteUser(
+  id: string,
+  deletedBy: "SELF" | "ADMIN" = "SELF",
+  tx?: PrismaTransaction,
+): Promise<void> {
+  const client = tx ?? prisma;
 
-export async function softDeleteUser(id: string): Promise<void> {
-  await prisma.user.update({
+  await client.user.update({
     where: { id },
     data: {
       isDeleted: true,
       isActive: false,
+      deletedAt: new Date(),
+      deletedBy,
     },
   });
 
@@ -166,6 +157,8 @@ export async function restoreUser(id: string): Promise<UserResponseDTO> {
     data: {
       isDeleted: false,
       isActive: true,
+      deletedAt: null,
+      deletedBy: null,
     },
     include: userProfileIncludes,
   });
@@ -175,13 +168,26 @@ export async function restoreUser(id: string): Promise<UserResponseDTO> {
   return toUserResponseDTO(user);
 }
 
+/** Drops both cached views of a user after a mutation. */
+export async function invalidateUserCache(
+  id: string,
+  email: string,
+): Promise<void> {
+  await Promise.all([
+    cacheInvalidate(userProfileKey(id)),
+    cacheInvalidate(userEmailKey(email)),
+  ]);
+}
+
+// ─── Role Profile Writes ───
+
 export async function createCustomerProfile(
   userId: string,
   firstName: string,
   lastName: string,
-  phone?: string,
-  avatar?: string,
-  dateOfBirth?: string,
+  phone?: string | undefined,
+  avatar?: string | undefined,
+  dateOfBirth?: string | undefined,
   tx?: PrismaTransaction,
 ) {
   const client = tx ?? prisma;
@@ -207,7 +213,8 @@ export async function createSellerProfile(
   userId: string,
   firstName: string,
   lastName: string,
-  shopData: NonNullable<CreateUserProfileDTO["shopData"]>,
+  phone?: string | undefined,
+  bio?: string | undefined,
   tx?: PrismaTransaction,
 ) {
   const client = tx ?? prisma;
@@ -217,6 +224,8 @@ export async function createSellerProfile(
       userId,
       firstName,
       lastName,
+      phone: phone ?? null,
+      bio: bio ?? null,
     },
   });
 }
@@ -238,65 +247,9 @@ export async function createAdminProfile(
   });
 }
 
-// ─── Cursor-Based Pagination ───
-
-export interface ListUsersFilters {
-  role?: UserRoles;
-  isActive?: boolean;
-  search?: string;
-}
-
-export async function listUsers(
-  cursor: string | undefined,
-  limit: number,
-  filters: ListUsersFilters = {},
-): Promise<CursorPaginationResult<UserResponseDTO>> {
-  const take = limit + 1;
-
-  const where: Record<string, unknown> = {
-    ...activeUserFilter,
-  };
-
-  if (filters.role) {
-    where.role = filters.role;
-  }
-
-  if (filters.isActive !== undefined) {
-    where.isActive = filters.isActive;
-  }
-
-  if (filters.search) {
-    where.email = {
-      contains: filters.search,
-      mode: "insensitive",
-    };
-  }
-
-  let cursorWhere: Record<string, unknown> = {};
-  if (cursor) {
-    const decodedCursor = decodeCursor(cursor);
-    cursorWhere = buildCursorWhere(decodedCursor, where);
-  } else {
-    cursorWhere = where;
-  }
-
-  const users = await prisma.user.findMany({
-    where: cursorWhere,
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take,
-    include: userProfileIncludes,
-  });
-
-  const paginated = paginateResult(users, limit);
-  return {
-    data: paginated.data.map(toUserResponseDTO),
-    nextCursor: paginated.nextCursor,
-    hasMore: paginated.hasMore,
-  };
-}
-
 // ─── Audit Repository ───
-export async function writeAuditLog(params: {
+
+export interface WriteAuditLogInput {
   actorId: string;
   actorEmail: string;
   actorDisplayName: string;
@@ -308,8 +261,19 @@ export async function writeAuditLog(params: {
   ipAddress?: string | undefined;
   userAgent?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
-}): Promise<void> {
-  await prisma.auditLog.create({
+}
+
+/**
+ * `tx` is optional so callers inside `prisma.$transaction` can keep the audit
+ * entry atomic with the write it describes.
+ */
+export async function writeAuditLog(
+  params: WriteAuditLogInput,
+  tx?: PrismaTransaction,
+): Promise<void> {
+  const client = tx ?? prisma;
+
+  await client.auditLog.create({
     data: {
       actorId: params.actorId,
       actorEmail: params.actorEmail,

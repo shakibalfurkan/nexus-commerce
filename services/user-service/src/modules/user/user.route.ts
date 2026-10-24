@@ -1,31 +1,24 @@
 import { Router } from "express";
 import { UserController } from "./user.controller.js";
-import validateRequest from "../../middlewares/validateRequest.js";
-import { UserValidation } from "./user.validation.js";
+import { auth } from "../../middlewares/auth.js";
 import verifyInternalCall from "../../middlewares/verifyInternalCall.js";
+import { UserRoles } from "../../generated/prisma/enums.js";
 
 const router: Router = Router();
 
-// ─── Internal Service Routes───
-router.post(
-  "/create-profile",
-  verifyInternalCall,
-  validateRequest(UserValidation.createUserProfileValidation),
-  UserController.createUserProfile,
-);
+// Internal-only (HMAC): email lookup
+router.get("/email/:email", verifyInternalCall, UserController.getUserByEmail);
 
-// ─── User Query Routes ───
+// Owner self-service (JWT)
+router.get("/me", auth(), UserController.getUserMe);
+router.delete("/me", auth(), UserController.deleteMe);
 
-router.get("/email/:email", UserController.getUserByEmail);
+// Admin-only by id
+router.get("/:id", auth(UserRoles.ADMIN, UserRoles.SUPER_ADMIN), UserController.getUserById);
+router.delete("/:id", auth(UserRoles.ADMIN, UserRoles.SUPER_ADMIN), UserController.deleteUser);
+router.delete("/:id/hard", auth(UserRoles.SUPER_ADMIN), UserController.hardDeleteUser);
 
-router.get("/:id", UserController.getUserById);
-
-// ─── User Management Routes ───
-
-router.delete("/:id", UserController.deleteUser);
-
-router.delete("/:id/hard", UserController.hardDeleteUser);
-
-router.post("/:id/restore", UserController.restoreUser);
+// Internal-only restore (HMAC) with grace check in service
+router.post("/:id/restore", verifyInternalCall, UserController.restoreUser);
 
 export const UserRoutes = router;

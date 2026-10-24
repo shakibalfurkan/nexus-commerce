@@ -1,159 +1,65 @@
 import { prisma } from "../../lib/prisma.js";
-import { BadRequestError, ConflictError } from "@nexus/errors";
-import { UserRoles } from "../../generated/prisma/enums.js";
-import type { CreateUserProfileDTO, UserResponseDTO } from "./user.dto.js";
+import { BadRequestError } from "@nexus/errors";
+import { emitDomainEvent } from "@nexus/kafka";
+import { UserDomainEventTypes } from "@nexus/event-contracts";
+import type { UserResponseDTO } from "./user.dto.js";
 import * as UserRepository from "./user.repository.js";
-import {
-  emitDomainEvent,
-} from "@nexus/kafka";
-import {
-  UserDomainEventTypes,
-} from "@nexus/event-contracts";
 
-// ─── Domain Constants ───
+/**
+ * User record operations (read / soft delete / hard delete / restore).
+ * Account *creation* lives with the role modules that own the profile shape —
+ * see `modules/{customer,seller,admin}` and the shared `provisionAccount`.
+ */
 
-const ADMIN_ROLES: readonly UserRoles[] = [
-  UserRoles.ADMIN,
-  UserRoles.SUPER_ADMIN,
-] as const;
-
-// ─── Public Service API ───
-
-export async function createUserProfile(
-  payload: CreateUserProfileDTO,
-  actorId: string,
-  ipAddress?: string,
-  userAgent?: string,
-): Promise<UserResponseDTO> {
-  const emailExists = await UserRepository.existsByEmailIncludingDeleted(
-    payload.email,
-  );
-  if (emailExists) {
-    throw new ConflictError(
-      "A user with this email address already exists",
-      "email",
-    );
-  }
-
-  if (payload.role === UserRoles.SELLER && !payload.shopData) {
-    throw new BadRequestError(
-      "Shop data is required for seller registration",
-      "shopData",
-    );
-  }
-
-  const result = await prisma.$transaction(async (tx) => {
-    const user = await UserRepository.createUser(
-      {
-        ...payload,
-      },
-      tx,
-    );
-
-    if (payload.role === UserRoles.CUSTOMER) {
-      await UserRepository.createCustomerProfile(
-        payload.id,
-        payload.firstName,
-        payload.lastName,
-        payload.phone,
-        payload.avatar,
-        payload.dateOfBirth,
-        tx,
-      );
-    } else if (payload.role === UserRoles.SELLER) {
-      await UserRepository.createSellerProfile(
-        payload.id,
-        payload.firstName,
-        payload.lastName,
-        payload.shopData!,
-        tx,
-      );
-    } else if (ADMIN_ROLES.includes(payload.role)) {
-      await UserRepository.createAdminProfile(
-        payload.id,
-        payload.firstName,
-        payload.lastName,
-        tx,
-      );
-    }
-
-    await UserRepository.writeAuditLog({
-      actorId,
-      actorEmail: "system@nexus.internal",
-      actorDisplayName: "user-service",
-      action: "USER_CREATED",
-      targetId: payload.id,
-      targetType: "User",
-      newValues: {
-        email: payload.email,
-        role: payload.role,
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-      },
-      ipAddress,
-      userAgent,
-    });
-
-    await emitDomainEvent(tx, {
-      eventType: UserDomainEventTypes.USER_REGISTERED,
-      aggregateId: user.id,
-      payload: {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        firstName: user.profile?.firstName ?? "",
-        lastName: user.profile?.lastName ?? "",
-        createdAt: user.createdAt,
-      },
-
-    });
-
-    return user;
-  });
-
-  return result;
-}
-
-export async function getUserById(id: string): Promise<UserResponseDTO | null> {
+async function getUserById(id: string): Promise<UserResponseDTO | null> {
   return UserRepository.findUserById(id);
 }
 
-export async function getUserByEmail(
+async function getUserByEmail(
   email: string,
 ): Promise<UserResponseDTO | null> {
-  const user = await UserRepository.findUserByEmail(email);
-
-  if (!user) {
-    return null;
-  }
-
-  return user;
+  return UserRepository.findUserByEmail(email);
 }
 
-export async function deleteUser(id: string, actorId: string): Promise<void> {
+async function deleteUser(id: string, actorId: string): Promise<void> {
   const user = await UserRepository.findUserById(id);
   if (!user) {
     throw new BadRequestError("User not found", "id");
   }
 
-  await prisma.$transaction(async (tx) => {
-    await UserRepository.softDeleteUser(id);
+  const deletedBy = actorId === id ? "SELF" : "ADMIN";
+  const deletedAt = new Date();
 
-    await UserRepository.writeAuditLog({
-      actorId,
-      actorEmail: "system@nexus.internal",
-      actorDisplayName: "user-service",
-      action: "USER_DELETED",
-      targetId: id,
-      targetType: "User",
-      oldValues: { email: user.email, role: user.role },
-      ipAddress: undefined,
-      userAgent: undefined,
+  await prisma.$transaction(async (tx) => {
+    await UserRepository.softDeleteUser(id, deletedBy, tx);
+
+    await UserRepository.writeAuditLog(
+      {
+        actorId,
+        actorEmail: "system@nexus.internal",
+        actorDisplayName: "user-service",
+        action: "USER_DELETED",
+        targetId: id,
+        targetType: "User",
+        oldValues: { email: user.email, role: user.role },
+      },
+      tx,
+    );
+
+    await emitDomainEvent(tx, {
+      eventType: UserDomainEventTypes.USER_DELETED,
+      aggregateId: id,
+      payload: {
+        userId: id,
+        email: user.email,
+        deletedAt: deletedAt.toISOString(),
+        deletedBy,
+      },
     });
   });
 }
 
-export async function hardDeleteUser(
+async function hardDeleteUser(
   id: string,
   actorId: string,
 ): Promise<void> {
@@ -165,24 +71,45 @@ export async function hardDeleteUser(
   await prisma.$transaction(async (tx) => {
     await UserRepository.hardDeleteUser(id, tx);
 
-    await UserRepository.writeAuditLog({
-      actorId,
-      actorEmail: "system@nexus.internal",
-      actorDisplayName: "user-service",
-      action: "USER_HARD_DELETED",
-      targetId: id,
-      targetType: "User",
-      oldValues: { email: user.email, role: user.role },
-      ipAddress: undefined,
-      userAgent: undefined,
-    });
+    await UserRepository.writeAuditLog(
+      {
+        actorId,
+        actorEmail: "system@nexus.internal",
+        actorDisplayName: "user-service",
+        action: "USER_HARD_DELETED",
+        targetId: id,
+        targetType: "User",
+        oldValues: { email: user.email, role: user.role },
+      },
+      tx,
+    );
   });
 }
 
-export async function restoreUser(
+const OWNER_RESTORE_DAYS = 30;
+const ADMIN_RESTORE_DAYS = 60;
+
+async function restoreUser(
   id: string,
   actorId: string,
 ): Promise<UserResponseDTO> {
+  const raw = await prisma.user.findUnique({ where: { id } });
+  if (!raw) {
+    throw new BadRequestError("User not found", "id");
+  }
+  if (!raw.deletedAt) {
+    throw new BadRequestError("Account is not restorable", "id");
+  }
+
+  const graceDays =
+    raw.deletedBy === "ADMIN" ? ADMIN_RESTORE_DAYS : OWNER_RESTORE_DAYS;
+  const deadline = new Date(
+    raw.deletedAt.getTime() + graceDays * 24 * 60 * 60 * 1000,
+  );
+  if (new Date() > deadline) {
+    throw new BadRequestError("Restore window expired", "id");
+  }
+
   const user = await UserRepository.restoreUser(id);
 
   await UserRepository.writeAuditLog({
@@ -193,15 +120,20 @@ export async function restoreUser(
     targetId: id,
     targetType: "User",
     newValues: { email: user.email, role: user.role },
-    ipAddress: undefined,
-    userAgent: undefined,
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await emitDomainEvent(tx, {
+      eventType: UserDomainEventTypes.USER_RESTORED,
+      aggregateId: id,
+      payload: { userId: id, email: user.email },
+    });
   });
 
   return user;
 }
 
 export const UserService = {
-  createUserProfile,
   getUserById,
   getUserByEmail,
   deleteUser,

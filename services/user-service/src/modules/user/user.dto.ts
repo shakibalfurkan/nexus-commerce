@@ -1,81 +1,19 @@
 import type { UserRoles } from "../../generated/prisma/enums.js";
+import type {
+  AdminProfile,
+  CustomerProfile,
+  SellerProfile,
+  ShippingAddress,
+  User,
+} from "../../generated/prisma/client.js";
 
-// ─── Input DTOs ───
-
-export interface CreateUserProfileDTO {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  role: UserRoles;
-  phone?: string;
-  avatar?: string;
-  dateOfBirth?: string;
-  shopData?: {
-    shopName: string;
-    shopEmail: string;
-    shopPhone: string;
-    shopAddress: {
-      street: string;
-      city: string;
-      state: string;
-      postalCode: string;
-      country: string;
-      coordinates?: {
-        lat: number;
-        lng: number;
-      };
-    };
-  };
-}
-
-export interface UpdateUserDTO {
-  firstName?: string;
-  lastName?: string;
-  phone?: string;
-  avatar?: string;
-  dateOfBirth?: string;
-}
-
-export interface UpdateSellerDTO extends UpdateUserDTO {
-  shopName?: string;
-  shopEmail?: string;
-  shopPhone?: string;
-  shopAddress?: {
-    street?: string;
-    city?: string;
-    state?: string;
-    postalCode?: string;
-    country?: string;
-    coordinates?: {
-      lat: number;
-      lng: number;
-    };
-  };
-  stripeConnectId?: string;
-}
+/**
+ * Response DTOs + mappers. They describe what user-service can actually return
+ * for the current Prisma schema (role is a list; the seller profile has no shop
+ * columns yet), so a response shape can never drift from the database.
+ */
 
 // ─── Response DTOs ───
-
-export interface UserResponseDTO {
-  id: string;
-  email: string;
-  role: UserRoles;
-  isActive: boolean;
-  isBlocked: boolean;
-  createdAt: string;
-  updatedAt: string;
-  profile: CustomerProfileDTO | SellerProfileDTO | AdminProfileDTO | null;
-}
-
-export interface CustomerProfileDTO {
-  firstName: string;
-  lastName: string;
-  phone: string | null;
-  avatar: string | null;
-  dateOfBirth: string | null;
-  shippingAddresses: ShippingAddressDTO[];
-}
 
 export interface ShippingAddressDTO {
   id: string;
@@ -90,16 +28,13 @@ export interface ShippingAddressDTO {
   label: string | null;
 }
 
-export interface ShopAddressDTO {
-  id: string;
-  street: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  country: string;
-  lat: number | null;
-  lng: number | null;
-  isPrimary: boolean;
+export interface CustomerProfileDTO {
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  avatar: string | null;
+  dateOfBirth: string | null;
+  shippingAddresses: ShippingAddressDTO[];
 }
 
 export interface SellerProfileDTO {
@@ -107,18 +42,7 @@ export interface SellerProfileDTO {
   lastName: string;
   phone: string | null;
   avatar: string | null;
-  shopName: string;
-  shopEmail: string;
-  shopPhone: string;
-  shopAddresses: ShopAddressDTO[];
-  stripeConnectId: string | null;
-  onboardingComplete: boolean;
-  commissionRate: number;
-  totalProducts: number;
-  salesCount: number;
-  totalRevenue: number;
-  rating: number;
-  reviewCount: number;
+  bio: string | null;
 }
 
 export interface AdminProfileDTO {
@@ -128,15 +52,25 @@ export interface AdminProfileDTO {
   avatar: string | null;
 }
 
-// ─── Mapper Functions ───
+export interface UserResponseDTO {
+  id: string;
+  email: string;
+  role: UserRoles[];
+  isActive: boolean;
+  isBlocked: boolean;
+  createdAt: string;
+  updatedAt: string;
+  profile: CustomerProfileDTO | SellerProfileDTO | AdminProfileDTO | null;
+}
 
-import type {
-  User,
-  CustomerProfile,
-  SellerProfile,
-  AdminProfile,
-  ShippingAddress,
-} from "../../generated/prisma/client.js";
+/** Input for creating the bare user record (profiles are written separately). */
+export interface CreateUserRecordInput {
+  id: string;
+  email: string;
+  role: UserRoles;
+}
+
+// ─── Mapper Functions ───
 
 type UserWithProfiles = User & {
   customerProfile?:
@@ -174,36 +108,13 @@ function mapCustomerProfile(
   };
 }
 
-function mapSellerProfile(
-  profile: SellerProfile & { shopAddresses: ShopAddress[] },
-): SellerProfileDTO {
+function mapSellerProfile(profile: SellerProfile): SellerProfileDTO {
   return {
     firstName: profile.firstName,
     lastName: profile.lastName,
     phone: profile.phone ?? null,
     avatar: profile.avatar ?? null,
-    shopName: profile.shopName,
-    shopEmail: profile.shopEmail,
-    shopPhone: profile.shopPhone,
-    shopAddresses: profile.shopAddresses.map((addr) => ({
-      id: addr.id,
-      street: addr.street,
-      city: addr.city,
-      state: addr.state,
-      postalCode: addr.postalCode,
-      country: addr.country,
-      lat: addr.lat ?? null,
-      lng: addr.lng ?? null,
-      isPrimary: addr.isPrimary,
-    })),
-    stripeConnectId: profile.stripeConnectId ?? null,
-    onboardingComplete: profile.onboardingComplete,
-    commissionRate: profile.commissionRate,
-    totalProducts: profile.totalProducts,
-    salesCount: profile.salesCount,
-    totalRevenue: profile.totalRevenue,
-    rating: profile.rating,
-    reviewCount: profile.reviewCount,
+    bio: profile.bio ?? null,
   };
 }
 
@@ -238,11 +149,4 @@ export function toUserResponseDTO(user: UserWithProfiles): UserResponseDTO {
     updatedAt: user.updatedAt.toISOString(),
     profile,
   };
-}
-
-export function isRole<T extends UserRoles>(
-  user: { role: UserRoles },
-  role: T,
-): user is { role: T } & typeof user {
-  return user.role === role;
 }
