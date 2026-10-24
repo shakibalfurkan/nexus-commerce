@@ -7,7 +7,7 @@ import type {
 
 const CURSOR_ENCODING = "base64url" as const;
 
-export function encodeCursor(createdAt: Date, id: string): string {
+function encodeCursor(createdAt: Date, id: string): string {
   const cursorData = {
     createdAt: createdAt.toISOString(),
     id,

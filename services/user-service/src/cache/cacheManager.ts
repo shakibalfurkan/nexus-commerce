@@ -188,15 +188,3 @@ export async function cacheInvalidate(key: string): Promise<void> {
     logger.warn(`[Cache] Failed to invalidate L2 (Redis) for key: ${key}.`);
   }
 }
-
-export async function cacheInvalidateMany(keys: string[]): Promise<void> {
-  await Promise.all(keys.map(cacheInvalidate));
-}
-
-export function clearL1Cache(): void {
-  l1Cache.clear();
-}
-
-export function getRedisCircuitState() {
-  return redisCircuitBreaker.getMetrics();
-}

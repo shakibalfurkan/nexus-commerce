@@ -11,13 +11,6 @@ declare namespace Express {
     requestId: string;
 
     /**
-     * Idempotency key from the `Idempotency-Key` header.
-     * Used to prevent duplicate processing of the same request.
-     * Populated by the `idempotencyMiddleware` (Sprint 4).
-     */
-    idempotencyKey?: string;
-
-    /**
      * Authenticated user identity, populated by auth middleware.
      * Set by the API Gateway or auth-service after JWT verification.
      */

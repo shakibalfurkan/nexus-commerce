@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { NotFoundError } from "@nexus/errors";
 
-export const notFoundHandler = (
+const notFoundHandler = (
   req: Request,
   _res: Response,
   next: NextFunction,

@@ -19,17 +19,23 @@ const verifyInternalCall = async (
   const now = Date.now();
   const fiveMinutes = 5 * 60 * 1000;
 
-  if (now - requestTime > fiveMinutes) {
+  if (Number.isNaN(requestTime) || now - requestTime > fiveMinutes) {
     throw new UnauthorizedError("Request timestamp expired");
   }
 
-  const payload = JSON.stringify(req.body);
+  const path = `${req.baseUrl}${req.path}`;
+  const payload = `${req.method.toUpperCase()}:${path}:${timestamp}:${JSON.stringify(req.body ?? {})}`;
   const expectedSignature = crypto
     .createHmac("sha256", config.internal_service_secret!)
     .update(payload)
     .digest("hex");
 
-  if (signature !== expectedSignature) {
+  const sigBuf = Buffer.from(String(signature), "hex");
+  const expBuf = Buffer.from(expectedSignature, "hex");
+  if (
+    sigBuf.length !== expBuf.length ||
+    !crypto.timingSafeEqual(sigBuf, expBuf)
+  ) {
     throw new UnauthorizedError("Invalid internal service signature");
   }
 

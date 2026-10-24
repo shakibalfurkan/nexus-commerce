@@ -25,18 +25,6 @@ export function userEmailKey(email: string): string {
   return `${SERVICE_PREFIX}:user:email:${normalizedEmail}`;
 }
 
-export function userExistsKey(identifier: string): string {
-  return `${SERVICE_PREFIX}:user:exists:${identifier}`;
-}
-
-export function userListKey(
-  cursor: string | undefined,
-  filters: string,
-): string {
-  const cursorPart = cursor ?? "start";
-  return `${SERVICE_PREFIX}:users:list:${cursorPart}:${filters}`;
-}
-
 export function negativeCacheKey(key: string): string {
   return `${key}:notfound`;
 }

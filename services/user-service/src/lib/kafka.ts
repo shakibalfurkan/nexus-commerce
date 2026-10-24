@@ -19,6 +19,7 @@ if (broker && username && password) {
     broker,
     username,
     password,
+    sslRejectUnauthorized: false,
   });
   kafka = client.kafka;
   producer = client.producer;

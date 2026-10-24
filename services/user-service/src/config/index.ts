@@ -21,8 +21,7 @@ export default {
 
   // ─── JWT ───
   jwt: {
-    access_token_secret: requireEnv("JWT_ACCESS_TOKEN_SECRET"),
-    refresh_token_secret: requireEnv("JWT_REFRESH_TOKEN_SECRET"),
+    access_token_secret: requireEnv("ACCESS_TOKEN_SECRET"),
   },
 
   // ─── Internal Service Auth ───
