@@ -3,6 +3,8 @@ import config from "../../config/index.js";
 import logger from "../../utils/logger.js";
 import { ServiceUnavailableError } from "@nexus/errors";
 import { CircuitBreaker } from "../../cache/circuitBreaker.js";
+import createInternalSignature from "../../utils/createInternalSignature.js";
+import { UserRoles } from "../../generated/prisma/enums.js";
 
 declare module "axios" {
   interface InternalAxiosRequestConfig {
@@ -11,6 +13,38 @@ declare module "axios" {
       retryCount?: number;
     };
   }
+}
+
+/**
+ * Internal client for user-service — the source of truth for user state.
+ *
+ * auth-service NEVER reads or writes user-service's database; profiles are
+ * created through these signed internal endpoints (HMAC over the exact request
+ * body + a 5-minute timestamp window, verified by user-service's
+ * `verifyInternalCall`).
+ *
+ * One endpoint per role, mirroring user-service's role-split profile routes, so
+ * no role branching lives in this client.
+ */
+
+export type TProvisionableRole =
+  | typeof UserRoles.CUSTOMER
+  | typeof UserRoles.SELLER
+  | typeof UserRoles.ADMIN;
+
+/** user-service mounts one router per role, so each role owns its own prefix. */
+const PROFILE_ENDPOINTS: Record<TProvisionableRole, string> = {
+  CUSTOMER: "/customers/profile",
+  SELLER: "/sellers/profile",
+  ADMIN: "/admins/profile",
+};
+
+export interface CreateUserProfileInput {
+  id: string;
+  email: string;
+  role: TProvisionableRole;
+  /** Role-specific profile fields (no role key — the endpoint selects the role). */
+  profile: Record<string, unknown>;
 }
 
 const createUserServiceClient = (): AxiosInstance =>
@@ -131,36 +165,57 @@ const userServiceCircuitBreaker = new CircuitBreaker({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-export const internalHeaders = (signature: string, requestId: string) => ({
+const internalHeaders = (signature: string, timestamp: string, requestId: string) => ({
   "X-Internal-Signature": signature,
-  "X-Internal-Timestamp": Date.now().toString(),
+  "X-Internal-Timestamp": timestamp,
   "X-Request-ID": requestId,
 });
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/**
+ * Creates the account owner's profile in user-service.
+ *
+ * Resolves only when user-service confirmed the write; every failure (including
+ * an open circuit) surfaces as `ServiceUnavailableError` so callers can roll
+ * back the credential they just created instead of reporting a false success.
+ */
 export const createUserProfile = async (
-  requestBody: Record<string, unknown>,
-  signature: string,
+  input: CreateUserProfileInput,
   requestId: string,
-) => {
-  userServiceCircuitBreaker.execute(async () => {
+): Promise<void> => {
+  const requestBody = {
+    id: input.id,
+    email: input.email,
+    profile: input.profile,
+  };
+
+  const timestamp = Date.now().toString();
+  const signature = createInternalSignature(
+    "POST",
+    PROFILE_ENDPOINTS[input.role],
+    requestBody,
+    timestamp,
+    config.internal_service_secret,
+  );
+
+  return userServiceCircuitBreaker.execute(async () => {
     try {
       const response = await userServiceClient.post(
-        "/users/create-profile",
+        PROFILE_ENDPOINTS[input.role],
         requestBody,
-        { headers: internalHeaders(signature, requestId) },
+        { headers: internalHeaders(signature, timestamp, requestId) },
       );
 
       logger.info("User profile created", {
         requestId,
         userId: response.data?.id,
+        role: input.role,
       });
-
-      return response.data;
     } catch (error) {
       logger.error("Failed to create user profile", {
         requestId,
+        role: input.role,
         error: error instanceof Error ? error.message : String(error),
       });
 
@@ -172,4 +227,22 @@ export const createUserProfile = async (
   });
 };
 
-export default userServiceClient;
+export const restoreUser = async (userId: string, requestId = "restore"): Promise<void> => {
+  const path = `/users/${userId}/restore`;
+  const body = {};
+  const timestamp = Date.now().toString();
+  const signature = createInternalSignature(
+    "POST",
+    path,
+    body,
+    timestamp,
+    config.internal_service_secret!,
+  );
+  await userServiceClient.post(path, body, {
+    headers: {
+      "X-Internal-Signature": signature,
+      "X-Internal-Timestamp": timestamp,
+      "X-Request-ID": requestId,
+    },
+  });
+};

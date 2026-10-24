@@ -1,5 +1,4 @@
 import { createKafkaClient, type Kafka, type Producer } from "@nexus/kafka";
-import { KafkaTopics } from "@nexus/event-contracts";
 import { createLogger } from "@nexus/logger";
 import config from "../config/index.js";
 
@@ -34,4 +33,4 @@ if (broker && username && password) {
 // (`src/events/eventBus.ts`) owns the producer, so `eventBus.disconnect()`
 // in `server.ts` is the single shutdown path.
 
-export { kafka, producer, KafkaTopics };
+export { kafka, producer };

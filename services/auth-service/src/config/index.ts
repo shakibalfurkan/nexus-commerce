@@ -9,7 +9,7 @@ const config = {
   port: Number(process.env.PORT) || 5000,
 
   redis: {
-    url: process.env.REDIS_DATABASE_URL,
+    url: requireEnv("REDIS_DATABASE_URL"),
   },
 
   kafka: {
@@ -19,13 +19,14 @@ const config = {
   },
 
   jwt: {
-    access_token_secret: requireEnv("JWT_ACCESS_TOKEN_SECRET"),
-    access_token_expires_in: optionalEnv("JWT_ACCESS_TOKEN_EXPIRES_IN", "15m"),
-    refresh_token_secret: requireEnv("JWT_REFRESH_TOKEN_SECRET"),
-    refresh_token_expires_in: optionalEnv("JWT_REFRESH_TOKEN_EXPIRES_IN", "7d"),
-    reset_token_secret: requireEnv("JWT_PASSWORD_RESET_TOKEN_SECRET"),
-    reset_token_expires_in: optionalEnv(
-      "JWT_PASSWORD_RESET_TOKEN_EXPIRES_IN",
+    access_token_secret: requireEnv("ACCESS_TOKEN_SECRET"),
+    access_token_expires_in: optionalEnv("ACCESS_TOKEN_EXPIRES_IN", "15m"),
+    refresh_token_secret: requireEnv("REFRESH_TOKEN_SECRET"),
+    refresh_token_expires_in: optionalEnv("REFRESH_TOKEN_EXPIRES_IN", "7d"),
+
+    password_reset_token_secret: requireEnv("PASSWORD_RESET_TOKEN_SECRET"),
+    password_reset_token_expires_in: optionalEnv(
+      "PASSWORD_RESET_TOKEN_EXPIRES_IN",
       "15m",
     ),
   },

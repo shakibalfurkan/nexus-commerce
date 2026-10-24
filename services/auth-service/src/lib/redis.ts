@@ -1,7 +1,6 @@
 import { createRedisClient, type Redis } from "@nexus/redis";
 import config from "../config/index.js";
 import logger from "../utils/logger.js";
-import { InternalServerError } from "@nexus/errors";
 
 const redisUrl = config.redis.url!;
 

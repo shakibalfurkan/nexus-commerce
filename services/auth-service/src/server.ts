@@ -5,6 +5,7 @@ import { eventBus } from "./events/eventBus.js";
 import { disconnectPrisma, prisma } from "./lib/prisma.js";
 import logger from "./utils/logger.js";
 import { startOutboxPoller, stopOutboxPoller } from "./events/outboxPoller.js";
+import { startRoleSyncConsumer } from "./events/consumers/startRoleSyncConsumer.js";
 import { disconnectRedis, redis } from "./lib/redis.js";
 
 let server: Server;
@@ -28,6 +29,9 @@ async function main(): Promise<void> {
 
       // Start the outbox poller to process pending events
       await startOutboxPoller();
+
+      // Subscribe the role-replica sync consumer to domain-events
+      await startRoleSyncConsumer();
     } else {
       logger.warn(
         "Kafka credentials not configured — event publishing and outbox poller disabled.",
