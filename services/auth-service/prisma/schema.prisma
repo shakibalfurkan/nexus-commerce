@@ -56,6 +56,28 @@ model PasswordReset {
   @@map("password_resets")
 }
 
+/// Single-use admin invite. Persisted in Postgres (not Redis) because the
+/// record IS the audit trail: who invited whom, when, and the status history.
+/// `tokenHash` is sha256 of the raw token; the raw token only ever travels in
+/// the emailed invite link.
+model AdminInvite {
+  id           String            @id @default(uuid())
+  email        String
+  tokenHash    String            @unique
+  status       AdminInviteStatus @default(PENDING)
+  invitedById  String
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  consumedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([status, expiresAt])
+  @@map("admin_invites")
+}
+
 model AuditLog {
   id         String  @id @default(uuid())
   actorId    String
@@ -131,4 +153,10 @@ enum OutboxStatus {
   PROCESSING
   COMPLETED
   DEAD
+}
+
+enum AdminInviteStatus {
+  PENDING
+  CONSUMED
+  EXPIRED
 }
