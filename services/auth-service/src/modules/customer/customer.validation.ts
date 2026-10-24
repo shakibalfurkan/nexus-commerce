@@ -1,24 +1,18 @@
 import z from "zod";
+import { AuthValidation } from "../auth/auth.validation.js";
 
-const emailSchema = z.email().trim().toLowerCase();
-
-const passwordSchema = z
-  .string()
-  .min(8, "Password must be at least 8 characters long")
-  .max(128, "Password must be less than 128 characters")
-  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
-  .regex(/[0-9]/, "Password must contain at least one number")
-  .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character")
-  .trim();
+/**
+ * Customer-app schemas. Only the fields a customer app collects differ from the
+ * seller app — email/password/OTP rules come from the shared auth primitives.
+ */
 
 const CustomerRegisterRequestSchema = z.object({
   body: z
     .object({
       firstName: z.string().min(1, "First name is required"),
       lastName: z.string().min(1, "Last name is required"),
-      email: emailSchema,
-      password: passwordSchema,
+      email: AuthValidation.emailSchema,
+      password: AuthValidation.passwordSchema,
       confirmPassword: z.string().min(1, "Please confirm your password"),
       acceptTerms: z.boolean().refine((val) => val === true, {
         message: "You must accept the Terms and Conditions to register",
@@ -31,6 +25,21 @@ const CustomerRegisterRequestSchema = z.object({
     }),
 });
 
+const verifyRegistrationSchema = z.object({
+  body: z.object({
+    email: AuthValidation.emailSchema,
+    otp: AuthValidation.otpSchema,
+  }),
+});
+
+const resendOtpSchema = z.object({
+  body: z.object({
+    email: AuthValidation.emailSchema,
+  }),
+});
+
 export const CustomerValidation = {
   CustomerRegisterRequestSchema,
+  verifyRegistrationSchema,
+  resendOtpSchema,
 };

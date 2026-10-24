@@ -1,88 +1,105 @@
-import type { ICustomerRegisterRequestDTO } from "./customer.interface.js";
-import * as Credential from "../../repositories/credential.js";
 import { BadRequestError } from "@nexus/errors";
-import checkOtpRestrictions from "../../utils/otp/checkOtpRestrictions.js";
-import { AuthDomainEventTypes } from "@nexus/event-contracts";
-import { OtpPurpose } from "../../constant/otp.js";
-import { emitDomainEvent } from "@nexus/kafka";
-import { prisma } from "../../lib/prisma.js";
-import trackOtpRequests from "../../utils/otp/trackOtpRequests.js";
-import { hashPassword } from "../../utils/passwordHandler.js";
-import config from "../../config/index.js";
-import generateOtp from "../../utils/otp/generateOtp.js";
-
-import { v5 as uuidv5 } from "uuid";
+import { AuthService } from "../auth/auth.service.js";
 import { UserRoles } from "../../generated/prisma/enums.js";
-import { redis } from "../../lib/redis.js";
+import type {
+  IAuthResult,
+  ICredentialLoginInput,
+  IRequestContext,
+} from "../auth/auth.interface.js";
+import type {
+  ICustomerRegisterRequestDTO,
+  IVerifyRegistrationDTO,
+} from "./customer.interface.js";
 
-const DNS_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+/**
+ * Customer-app flows. Registration keeps the existing CustomerRegisterRequest
+ * shape (name, password confirmation, terms, marketing opt-in) and the existing
+ * `auth:reg:CUSTOMER:<email>` cache convention; the OTP mechanics come from the
+ * shared auth module.
+ *
+ * Every entry point takes the request context so the customer surface guard
+ * runs exactly once, in one place, per request.
+ */
 
-const customerRegisterRequest = async (
+const CUSTOMER_SURFACE = "customer-web";
+
+function toRegistrationProfile(
   payload: ICustomerRegisterRequestDTO,
-): Promise<void> => {
-  const {
-    firstName,
-    lastName,
-    email,
-    password,
-    confirmPassword,
-    acceptTerms,
-    marketingOptIn,
-  } = payload;
-
-  if (password !== confirmPassword) {
-    throw new BadRequestError("Passwords do not match");
-  }
-
-  const existingUser = await Credential.findByEmail(email);
-  if (existingUser) {
-    throw new BadRequestError("Email already in use", "email");
-  }
-
-  await checkOtpRestrictions(email, OtpPurpose.EMAIL_VERIFICATION);
-  await trackOtpRequests(email, OtpPurpose.EMAIL_VERIFICATION);
-
-  const hashedPassword = await hashPassword(
-    confirmPassword,
-    config.bcrypt_salt_round,
-  );
-
-  const otp = generateOtp();
-
-  const registrationData = {
-    firstName,
-    lastName,
-    email,
-    password: hashedPassword,
-    acceptTerms,
-    marketingOptIn,
+): Record<string, unknown> {
+  return {
+    firstName: payload.firstName,
+    lastName: payload.lastName,
   };
+}
 
-  await redis.setex(
-    `auth:reg:${UserRoles.CUSTOMER}:${email}`,
-    35 * 60,
-    JSON.stringify(registrationData),
-  );
+async function customerRegisterRequest(
+  payload: ICustomerRegisterRequestDTO,
+  context: IRequestContext,
+): Promise<void> {
+  await AuthService.assertClientSurface(CUSTOMER_SURFACE, context);
 
-  await redis.setex(
-    `auth:otp:${OtpPurpose.EMAIL_VERIFICATION}:${email}`,
-    5 * 60,
-    otp,
-  );
-
-  const aggregateId = uuidv5(email, DNS_NAMESPACE);
-
-  await prisma.$transaction(async (tx) => {
-    await emitDomainEvent(tx, {
-      eventType: AuthDomainEventTypes.EMAIL_VERIFICATION_OTP_SENT,
-      aggregateId,
-      payload: {
-        firstName,
-        email,
-        otp,
-      },
-    });
+  await AuthService.startRegistration({
+    role: UserRoles.CUSTOMER,
+    email: payload.email,
+    password: payload.password,
+    firstName: payload.firstName,
+    profile: toRegistrationProfile(payload),
   });
-};
+}
 
-export const CustomerService = { customerRegisterRequest };
+async function verifyCustomerRegistration(
+  payload: IVerifyRegistrationDTO,
+  context: IRequestContext,
+  requestId: string,
+): Promise<IAuthResult> {
+  await AuthService.assertClientSurface(CUSTOMER_SURFACE, context);
+
+  return AuthService.completeRegistration({
+    requestId,
+    role: UserRoles.CUSTOMER,
+    email: payload.email,
+    otp: payload.otp,
+  });
+}
+
+async function resendCustomerRegistrationOtp(
+  email: string,
+  context: IRequestContext,
+): Promise<void> {
+  await AuthService.assertClientSurface(CUSTOMER_SURFACE, context);
+  await AuthService.resendRegistrationOtp(email, UserRoles.CUSTOMER);
+}
+
+/**
+ * Dual-role safe: the password is verified once against the shared identity,
+ * then this surface only checks that a customer profile exists. A missing one
+ * is a distinguishable error (not a 401) so the storefront can offer to create
+ * a profile instead of showing "wrong password".
+ */
+async function customerLogin(
+  payload: ICredentialLoginInput,
+  context: IRequestContext,
+): Promise<IAuthResult> {
+  await AuthService.assertClientSurface(CUSTOMER_SURFACE, context);
+
+  const credential = await AuthService.verifyCredentials(
+    payload.email,
+    payload.password,
+  );
+
+  if (!credential.role.includes(UserRoles.CUSTOMER)) {
+    throw new BadRequestError(
+      "No customer profile exists for this account. Please create one to continue.",
+      "NO_CUSTOMER_PROFILE",
+    );
+  }
+
+  return AuthService.completeLogin(credential, UserRoles.CUSTOMER);
+}
+
+export const CustomerService = {
+  customerRegisterRequest,
+  verifyCustomerRegistration,
+  resendCustomerRegistrationOtp,
+  customerLogin,
+};
