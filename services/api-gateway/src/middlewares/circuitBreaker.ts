@@ -40,7 +40,7 @@ const refreshState = (state: CircuitBreakerState): void => {
 
 // ─── Public Controls ─────
 
-export const recordSuccess = (service: string): void => {
+const recordSuccess = (service: string): void => {
   const state = getOrCreate(service);
 
   if (state.state === "HALF_OPEN") {
@@ -50,7 +50,7 @@ export const recordSuccess = (service: string): void => {
   }
 };
 
-export const recordFailure = (service: string): void => {
+const recordFailure = (service: string): void => {
   const state = getOrCreate(service);
 
   state.failures++;
@@ -70,23 +70,10 @@ export const recordFailure = (service: string): void => {
   }
 };
 
-export const isOpen = (service: string): boolean => {
+const isOpen = (service: string): boolean => {
   const state = getOrCreate(service);
   refreshState(state);
   return state.state === "OPEN";
-};
-
-export const getState = (service: string): CircuitBreakerState =>
-  getOrCreate(service);
-
-export const reset = (service?: string): void => {
-  if (service) {
-    services.delete(service);
-    logger.info("Circuit breaker reset", { service });
-  } else {
-    services.clear();
-    logger.info("All circuit breakers reset");
-  }
 };
 
 // ─── Middleware ──────────

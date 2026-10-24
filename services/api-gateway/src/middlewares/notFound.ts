@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { NotFoundError } from "@nexus/errors";
 import logger from "../utils/logger.js";
 
-export const notFoundHandler = (
+const notFoundHandler = (
   req: Request,
   _res: Response,
   next: NextFunction,

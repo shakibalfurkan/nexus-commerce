@@ -1,4 +1,4 @@
-import { loadEnv, optionalEnv } from "@nexus/config";
+import { loadEnv } from "@nexus/config";
 
 loadEnv();
 

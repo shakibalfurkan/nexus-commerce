@@ -10,6 +10,7 @@ import type { Socket } from "net";
 import config from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import { ServiceUnavailableError } from "@nexus/errors";
+import { blockInternalOnlyPaths } from "./internalOnly.js";
 
 const buildProxy = (serviceUrl: string): RequestHandler =>
   createProxyMiddleware({
@@ -64,5 +65,12 @@ const buildProxy = (serviceUrl: string): RequestHandler =>
 
 export const registerProxies = (app: Application): void => {
   app.use("/auth-service", buildProxy(config.auth_service_url!));
-  app.use("/user-service", buildProxy(config.user_service_url!));
+
+  // Internal-only (HMAC) endpoints live under otherwise-public user-service
+  // prefixes, so they are rejected here before the proxy forwards them.
+  app.use(
+    "/user-service",
+    blockInternalOnlyPaths,
+    buildProxy(config.user_service_url!),
+  );
 };
