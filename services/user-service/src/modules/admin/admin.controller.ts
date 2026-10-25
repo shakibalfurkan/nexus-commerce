@@ -33,4 +33,34 @@ const createAdminProfile = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-export const AdminProfileController = { createAdminProfile };
+const createSuperAdminProfile = catchAsync(async (req: Request, res: Response) => {
+  const payload: ProvisionAdminProfileInput = {
+    id: req.body.id,
+    email: req.body.email,
+    firstName: req.body.profile.firstName,
+    lastName: req.body.profile.lastName,
+    phone: req.body.profile.phone,
+  };
+
+  const actorId: string = req.user?.id ?? req.body.id;
+  const { ipAddress, userAgent } = readRequestContext(req);
+
+  const result = await AdminProfileService.createSuperAdminProfile(
+    payload,
+    actorId,
+    ipAddress,
+    userAgent,
+  );
+
+  sendResponse(res, {
+    statusCode: 201,
+    success: true,
+    message: "Super admin profile created successfully",
+    data: result,
+  });
+});
+
+export const AdminProfileController = {
+  createAdminProfile,
+  createSuperAdminProfile,
+};

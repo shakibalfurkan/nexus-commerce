@@ -17,4 +17,11 @@ router.post(
   AdminProfileController.createAdminProfile,
 );
 
+router.post(
+  "/super-admin-profile",
+  verifyInternalCall,
+  validateRequest(AdminProfileValidation.provisioningSchema),
+  AdminProfileController.createSuperAdminProfile,
+);
+
 export const AdminRoutes = router;

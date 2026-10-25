@@ -33,6 +33,14 @@ export interface ProvisionAccountInput {
 export async function provisionAccount(
   input: ProvisionAccountInput,
 ): Promise<UserResponseDTO> {
+  // Idempotent by id: a retry that already created the user row (and its
+  // profile, since both are written in one transaction) returns the existing
+  // record instead of failing on the unique email constraint.
+  const existingById = await UserRepository.findUserById(input.id);
+  if (existingById) {
+    return existingById;
+  }
+
   const emailExists = await UserRepository.existsByEmailIncludingDeleted(
     input.email,
   );
