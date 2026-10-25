@@ -30,13 +30,15 @@ declare module "axios" {
 export type TProvisionableRole =
   | typeof UserRoles.CUSTOMER
   | typeof UserRoles.SELLER
-  | typeof UserRoles.ADMIN;
+  | typeof UserRoles.ADMIN
+  | typeof UserRoles.SUPER_ADMIN;
 
 /** user-service mounts one router per role, so each role owns its own prefix. */
 const PROFILE_ENDPOINTS: Record<TProvisionableRole, string> = {
   CUSTOMER: "/customers/profile",
   SELLER: "/sellers/profile",
   ADMIN: "/admins/profile",
+  SUPER_ADMIN: "/admins/super-admin-profile",
 };
 
 export interface CreateUserProfileInput {

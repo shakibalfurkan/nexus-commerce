@@ -39,3 +39,10 @@ export async function addRoleIfUnchanged(
 
   return result.count === 1;
 }
+
+export async function existsSuperAdmin(): Promise<boolean> {
+  const count = await prisma.credential.count({
+    where: { role: { has: "SUPER_ADMIN" } },
+  });
+  return count > 0;
+}
