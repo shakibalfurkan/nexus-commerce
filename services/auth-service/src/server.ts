@@ -6,6 +6,11 @@ import { disconnectPrisma, prisma } from "./lib/prisma.js";
 import logger from "./utils/logger.js";
 import { startOutboxPoller, stopOutboxPoller } from "./events/outboxPoller.js";
 import { startRoleSyncConsumer } from "./events/consumers/startRoleSyncConsumer.js";
+import {
+  hasSuperAdmin,
+  validateSuperAdminEnv as validateSuperAdminEnvThrow,
+  bootstrapSuperAdminWithRetry,
+} from "./bootstrap/superAdmin.js";
 import { disconnectRedis, redis } from "./lib/redis.js";
 
 let server: Server;
@@ -38,11 +43,30 @@ async function main(): Promise<void> {
       );
     }
 
+    // Phase A: check SUPER_ADMIN existence before listening.
+    const superAdminExists = await hasSuperAdmin();
+    if (superAdminExists) {
+      logger.info("SUPER_ADMIN already exists; skipping bootstrap.");
+    } else {
+      // validate env vars now (aborts on missing/invalid)
+      validateSuperAdminEnvThrow();
+    }
+
     // Create app
     const app = createApp();
     server = createServer(app);
     server.listen(port, () => {
       logger.info(`Nexus ${config.serviceName} is running on port ${port}`);
+
+      // Phase B: create after listening, with retries.
+      if (!superAdminExists) {
+        bootstrapSuperAdminWithRetry()
+          .then(() => logger.info("SUPER_ADMIN bootstrap done; continuing."))
+          .catch((err) => {
+            logger.error("SUPER_ADMIN bootstrap failed", { error: err });
+            process.exit(1);
+          });
+      }
     });
   } catch (err) {
     logger.error("Failed to start server:", err);
