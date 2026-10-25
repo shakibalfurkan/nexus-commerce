@@ -15,6 +15,7 @@ const INTERNAL_ONLY_PATHS = new Set([
   "/customers/profile",
   "/sellers/profile",
   "/admins/profile",
+  "/admins/super-admin-profile",
 ]);
 
 export const blockInternalOnlyPaths = (
