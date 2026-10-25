@@ -36,6 +36,12 @@ const config = {
   user_service_url: optionalEnv("USER_SERVICE_URL", "http://localhost:5001"),
   internal_service_secret: requireEnv("INTERNAL_SERVICE_SECRET"),
 
+  // Optional: only required when no SUPER_ADMIN exists yet (bootstrap).
+  super_admin_email: process.env.SUPER_ADMIN_EMAIL,
+  super_admin_password: process.env.SUPER_ADMIN_PASSWORD,
+  super_admin_first_name: process.env.SUPER_ADMIN_FIRST_NAME,
+  super_admin_last_name: process.env.SUPER_ADMIN_LAST_NAME,
+
   customer_client_url: optionalEnv(
     "CUSTOMER_CLIENT_URL",
     "http://localhost:3000",
